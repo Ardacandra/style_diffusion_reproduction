@@ -209,3 +209,5 @@ __marimo__/
 # Project specific ignores
 data/*
 sandbox.ipynb
+guided-diffusion/
+models/*
