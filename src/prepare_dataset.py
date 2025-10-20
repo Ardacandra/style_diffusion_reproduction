@@ -55,7 +55,7 @@ def download_coco_images(output_dir, n_images=100, size=256):
     os.makedirs(output_dir, exist_ok=True)
     subset = random.sample(range(len(ds)), min(n_images, len(ds)))
     for i in subset:
-        img = Image.open(BytesIO(ds[i]["image"]["bytes"])).convert("RGB")
+        img = ds[i]['image'].convert("RGB")
         img = img.resize((size, size))
         img.save(f"{output_dir}/{i:04d}.jpg")
     print(f"✅ Saved {len(subset)} content images to {output_dir}/")
