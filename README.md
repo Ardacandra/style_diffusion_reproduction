@@ -14,10 +14,10 @@ cd style_diffusion_reproduction
 2. Create environment
 
 ```
-conda create -n style_diffusion_reproduction python=3.12
+conda create -n style_diffusion_reproduction python=3.9
 conda activate style_diffusion_reproduction
 conda install pytorch torchvision torchaudio pytorch-cuda=12.1 -c pytorch -c nvidia
-pip install -r requirements.
+pip install -r requirements.txt
 pip install git+https://github.com/openai/CLIP.git
 ```
 
