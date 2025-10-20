@@ -20,3 +20,9 @@ conda install pytorch torchvision torchaudio pytorch-cuda=12.1 -c pytorch -c nvi
 pip install -r requirements.
 pip install git+https://github.com/openai/CLIP.git
 ```
+
+3. Prepare dataset
+
+```
+python src/prepare_dataset.py --n_content 100 --size 256
+```
