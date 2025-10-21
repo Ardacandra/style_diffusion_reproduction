@@ -211,3 +211,4 @@ data/*
 sandbox.ipynb
 guided-diffusion/
 models/*
+output/*
