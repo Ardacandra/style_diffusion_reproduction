@@ -1,0 +1,19 @@
+#data path
+content_path: "./data/content"
+style_path: "./data/style"
+
+#output path
+output_path: "./output"
+
+#pretrained diffusion model path
+pretrained_model_path: "./models/checkpoints/256x256_diffusion_uncond.pt"
+
+#run parameters
+run_id: "test_run"
+
+#style removal parameters
+device: "cpu" #options: "cpu", "cuda"
+image_size: 256
+t_diffusion: 1000
+t_remov: 100
+batch_size: 4
