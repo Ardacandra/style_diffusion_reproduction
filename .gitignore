@@ -212,3 +212,8 @@ sandbox.ipynb
 guided-diffusion/
 models/*
 output/*
+
+# Ignore TC2 error and output files
+*.err
+*.out
+*.sh
