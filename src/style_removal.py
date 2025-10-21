@@ -83,8 +83,8 @@ if __name__ == "__main__":
     DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
     CHECKPOINT_PATH = "models/checkpoints/256x256_diffusion_uncond.pt"
     IMAGE_SIZE = 256
-    T_DIFFUSION = 100
-    T_REMOV = 10 #Larger T_remov → stronger style removal (more style details removed). 
+    T_DIFFUSION = 1000
+    T_REMOV = 100 #Larger T_remov → stronger style removal (more style details removed). 
     IMAGE_PATH = "data/content/"
     OUTPUT_DIR = "output/"
     OUTPUT_PREFIX = "style_removal__"
@@ -117,7 +117,7 @@ if __name__ == "__main__":
         'num_head_channels': 64,
         'num_res_blocks': 2,
         'resblock_updown': True,
-        'use_fp16': DEVICE=='cuda', #set to True if using CUDA
+        'use_fp16': False,
         'use_scale_shift_norm': True,
     })
 
