@@ -1,6 +1,10 @@
 import numpy as np
+import os
 import torch
 import torchvision.transforms as T
+from PIL import Image
+import matplotlib.pyplot as plt
+from guided_diffusion.script_util import create_model_and_diffusion, model_and_diffusion_defaults
 
 from helper import *
 
@@ -73,3 +77,74 @@ def ddim_reverse_deterministic(x_t, model, diffusion, ddim_timesteps, device):
         x = x0_pred  # move to estimated x0
 
     return x
+
+if __name__ == "__main__":
+    #Example usage
+    DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+    CHECKPOINT_PATH = "models/checkpoints/256x256_diffusion_uncond.pt"
+    IMAGE_SIZE = 256
+    T_DIFFUSION = 100
+    T_REMOV = 10 #Larger T_remov → stronger style removal (more style details removed). 
+    IMAGE_PATH = "data/content/"
+    OUTPUT_DIR = "output/"
+    OUTPUT_PREFIX = "style_removal__"
+
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
+
+    #get sample image
+    image_files = [f for f in os.listdir(IMAGE_PATH) if f.lower().endswith(('.jpg', '.jpeg'))]
+    image = Image.open(os.path.join(IMAGE_PATH, image_files[0])).convert('RGB')
+    plt.imshow(image)
+    plt.title("Original Image")
+    plt.savefig(os.path.join(OUTPUT_DIR, OUTPUT_PREFIX + "original.png"), bbox_inches='tight', dpi=300)
+
+    #apply color removal
+    image_luma = rgb_to_luma_601(image)
+    plt.imshow(image_luma, cmap='gray')
+    plt.title("Image After Color Removal")
+    plt.savefig(os.path.join(OUTPUT_DIR, OUTPUT_PREFIX + "color_removed.png"), bbox_inches='tight', dpi=300)
+
+    #forward diffusion ODE/inversion to obtain latents
+    options = model_and_diffusion_defaults()
+    options.update({
+        'attention_resolutions': '32,16,8',
+        'class_cond': False,
+        'diffusion_steps': T_DIFFUSION,
+        'image_size': IMAGE_SIZE,
+        'learn_sigma': True,
+        'noise_schedule': 'linear',
+        'num_channels': 256,
+        'num_head_channels': 64,
+        'num_res_blocks': 2,
+        'resblock_updown': True,
+        'use_fp16': DEVICE=='cuda', #set to True if using CUDA
+        'use_scale_shift_norm': True,
+    })
+
+    model, diffusion = create_model_and_diffusion(**options)
+    state_dict = torch.load(CHECKPOINT_PATH, map_location=DEVICE, weights_only=True)
+    model.load_state_dict(state_dict)
+    model.eval().to(DEVICE)
+
+    #convert luma image into tensor
+    x0 = prepare_image_as_tensor(Image.fromarray(image_luma), image_size=IMAGE_SIZE, device=DEVICE)
+
+    #forward diffusion
+    t = torch.tensor([diffusion.num_timesteps - 1]).to(DEVICE)
+    x_t = diffusion.q_sample(x0, t, torch.randn_like(x0))
+
+    image_noised = x_t.squeeze(0).permute(1, 2, 0).cpu().numpy()
+    image_noised = ((image_noised + 1) / 2).clip(0, 1)  # scale back to [0,1
+    plt.imshow(image_noised)
+    plt.title("Noised Image After Forward Diffusion")
+    plt.savefig(os.path.join(OUTPUT_DIR, OUTPUT_PREFIX + "noised_image.png"), bbox_inches='tight', dpi=300)
+
+    #reverse diffusion with fewer steps (DDIM)
+    ddim_timesteps = make_ddim_timesteps(T_DIFFUSION, T_REMOV)
+    x0_est = ddim_reverse_deterministic(x_t, model, diffusion, ddim_timesteps, device=DEVICE)
+
+    image_recon = x0_est.squeeze(0).permute(1, 2, 0).cpu().numpy()
+    image_recon = ((image_recon + 1) / 2).clip(0, 1)  # scale back to [0,1
+    plt.imshow(image_recon)
+    plt.title("Reconstructed Image After Style Removal")
+    plt.savefig(os.path.join(OUTPUT_DIR, OUTPUT_PREFIX + "recon_image.png"), bbox_inches='tight', dpi=300)
