@@ -21,7 +21,23 @@ def main(config_path):
         format="%(asctime)s - %(levelname)s - %(message)s"
     )
     logger = logging.getLogger("Main")
-    logger.info(f"run parameters: {cfg}")
+    logger.info(f"Run parameters: {cfg}")
+
+    if cfg['run_mode'] == 'style_removal':
+        logger.info("Starting style removal...")
+
+        #for content images, apply color removal only
+        content_output_path = os.path.join(run_output_path, "content_processed")
+        os.makedirs(content_output_path, exist_ok=True)
+        for image_file in os.listdir(cfg['content_path']):
+            if image_file.lower().endswith(('.jpg', '.jpeg', '.png')):
+                logger.info(f"Processing content image: {image_file}")
+                image = Image.open(os.path.join(cfg['content_path'], image_file)).convert('RGB')
+                image_luma = rgb_to_luma_601(image)
+                Image.fromarray(image_luma).save(os.path.join(content_output_path, image_file))
+                logger.info(f"{image_file} processed and saved to {content_output_path}")  
+
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
