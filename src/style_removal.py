@@ -20,7 +20,7 @@ def make_ddim_timesteps(num_timesteps_total, T_remov):
     return timesteps
 
 @torch.no_grad()
-def ddim_reverse_deterministic(x_t, model, diffusion, ddim_timesteps, device):
+def ddim_reverse_deterministic(x_t, model, diffusion, ddim_timesteps, device, logger=None):
     """
     Perform DDIM deterministic reverse diffusion from x_t to estimate x0.
     Args:
@@ -29,10 +29,14 @@ def ddim_reverse_deterministic(x_t, model, diffusion, ddim_timesteps, device):
         diffusion: diffusion process object
         ddim_timesteps: list/array of timesteps for DDIM reverse process
         device: torch device
+        logger: optional logger for logging
     
     Returns:
         x0_est: estimated clean image tensor with shape [B, C, H, W]
     """
+    if logger is not None:
+        logger.info(f"Starting DDIM reverse diffusion with timesteps: {ddim_timesteps}")
+
     x = x_t
     B = x.shape[0]
 
@@ -40,6 +44,9 @@ def ddim_reverse_deterministic(x_t, model, diffusion, ddim_timesteps, device):
     alphas_cumprod = diffusion.alphas_cumprod
 
     for i in range(len(ddim_timesteps)-1):
+        if logger is not None:
+            logger.info(f"DDIM reverse step {i+1}/{len(ddim_timesteps)-1}, timestep {ddim_timesteps[i]} -> {ddim_timesteps[i+1]}")
+
         t = int(ddim_timesteps[i])
         t_prev = int(ddim_timesteps[i+1])
         t_tensor = torch.full((B,), t, dtype=torch.long, device=device)
@@ -66,6 +73,9 @@ def ddim_reverse_deterministic(x_t, model, diffusion, ddim_timesteps, device):
     # Final step: move all the way to t=0 estimation if last timestep isn't 0
     last_t = int(ddim_timesteps[-1])
     if last_t != 0:
+        if logger is not None:
+            logger.info(f"Final DDIM reverse step to t=0 from timestep {last_t}")
+
         t_tensor = torch.full((B,), last_t, dtype=torch.long, device=device)
         out = model(x, t_tensor)
         # If model predicts both mean and variance
@@ -77,6 +87,9 @@ def ddim_reverse_deterministic(x_t, model, diffusion, ddim_timesteps, device):
         alpha_bar_t = alphas_cumprod[last_t]
         x0_pred = (x - np.sqrt(1.0 - alpha_bar_t) * eps) / np.sqrt(alpha_bar_t)
         x = x0_pred  # move to estimated x0
+
+    if logger is not None:
+        logger.info("DDIM reverse diffusion completed.")
 
     return x
 
