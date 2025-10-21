@@ -3,7 +3,8 @@ import yaml
 import logging
 import os
 
-
+from src.helper import *
+from src.style_removal import *
 
 def main(config_path):
     # loading configurations

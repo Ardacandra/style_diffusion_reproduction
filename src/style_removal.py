@@ -1,12 +1,14 @@
+import sys, os
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
 import numpy as np
-import os
 import torch
 import torchvision.transforms as T
 from PIL import Image
 import matplotlib.pyplot as plt
 from guided_diffusion.script_util import create_model_and_diffusion, model_and_diffusion_defaults
 
-from helper import *
+from src.helper import *
 
 def make_ddim_timesteps(num_timesteps_total, T_remov):
     """
