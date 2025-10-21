@@ -10,6 +10,7 @@ pretrained_model_path: "./models/checkpoints/256x256_diffusion_uncond.pt"
 
 #run parameters
 run_id: "test_run"
+run_mode: "style_removal" #options: "style_removal", "style_transfer"
 
 #style removal parameters
 device: "cpu" #options: "cpu", "cuda"
