@@ -2,6 +2,8 @@ import numpy as np
 import torch
 import torchvision.transforms as T
 
+from helper import *
+
 def make_ddim_timesteps(num_timesteps_total, T_remov):
     """
     Make evenly spaced descending list of timesteps for DDIM reverse process.
