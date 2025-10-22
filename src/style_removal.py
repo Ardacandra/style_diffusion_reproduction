@@ -10,87 +10,67 @@ from guided_diffusion.script_util import create_model_and_diffusion, model_and_d
 
 from src.helper import *
 
-def make_ddim_timesteps(num_timesteps_total, T_remov):
-    """
-    Make evenly spaced descending list of timesteps for DDIM reverse process.
-    """
-    assert T_remov>=1 and T_remov<=num_timesteps_total
-    timesteps = np.linspace(0, num_timesteps_total-1, T_remov, dtype=int)
-    timesteps = timesteps[::-1] #reverse for descending order
-    return timesteps
-
 @torch.no_grad()
-def ddim_reverse_deterministic(x_t, model, diffusion, ddim_timesteps, device, logger=None):
+def ddim_deterministic(
+    x_start,
+    model,
+    diffusion,
+    ddim_timesteps,
+    device,
+    logger=None
+):
     """
-    Perform DDIM deterministic reverse diffusion from x_t to estimate x0.
+    DDIM deterministic diffusion (forward or reverse).
+
     Args:
-        x_t: noised input tensor at timestep t with shape [B, C, H, W]
-        model: UNet diffusion model that predicts noise for input (x, t)
-        diffusion: diffusion process object
-        ddim_timesteps: list/array of timesteps for DDIM reverse process
+        x_start: starting tensor (x0 for forward, x_t for reverse)
+        model: UNet diffusion model
+        diffusion: diffusion process (contains alphas_cumprod)
+        ddim_timesteps: list of timesteps
         device: torch device
-        logger: optional logger for logging
-    
+        logger: optional logger
     Returns:
-        x0_est: estimated clean image tensor with shape [B, C, H, W]
+        x_out: resulting tensor (xt for forward, x0 for reverse)
     """
+    
     if logger is not None:
-        logger.info(f"Starting DDIM reverse diffusion with timesteps: {ddim_timesteps}")
+        logger.info(f"Starting DDIM diffusion with {len(ddim_timesteps)} steps.")
 
-    x = x_t
+    x = x_start.clone()
     B = x.shape[0]
+    alphas_cumprod = torch.tensor(diffusion.alphas_cumprod, dtype=torch.float32, device=device)
 
-    #retrieve alphas from diffusion process
-    alphas_cumprod = diffusion.alphas_cumprod
-
-    for i in range(len(ddim_timesteps)-1):
-        if logger is not None:
-            logger.info(f"DDIM reverse step {i+1}/{len(ddim_timesteps)-1}, timestep {ddim_timesteps[i]} -> {ddim_timesteps[i+1]}")
-
+    for i in range(len(ddim_timesteps) - 1):
         t = int(ddim_timesteps[i])
-        t_prev = int(ddim_timesteps[i+1])
-        t_tensor = torch.full((B,), t, dtype=torch.long, device=device)
-        t_prev_tensor = torch.full((B,), t_prev, dtype=torch.long, device=device)
+        t_next = int(ddim_timesteps[i + 1])
 
-        #predict noise eps with pre-trained model
-        out = model(x, t_tensor)
-        # If model predicts both mean and variance
-        if out.shape[1] == 6:
-            eps, logvar = torch.split(out, 3, dim=1)
-        else:
-            eps = out
-            
-        #fetch alpha bars
-        alpha_bar_t = alphas_cumprod[t]
-        alpha_bar_prev = alphas_cumprod[t_prev]
-
-        #compute x0_est
-        x0_pred = (x - np.sqrt(1.0 - alpha_bar_t) * eps) / np.sqrt(alpha_bar_t)
-
-        #deterministic DDIM update (eta = 0)
-        x = np.sqrt(alpha_bar_prev) * x0_pred + np.sqrt(1.0 - alpha_bar_prev) * eps
-
-    # Final step: move all the way to t=0 estimation if last timestep isn't 0
-    last_t = int(ddim_timesteps[-1])
-    if last_t != 0:
         if logger is not None:
-            logger.info(f"Final DDIM reverse step to t=0 from timestep {last_t}")
+            logger.info(f"DDIM step {i+1}/{len(ddim_timesteps)-1}: {t} -> {t_next}")
 
-        t_tensor = torch.full((B,), last_t, dtype=torch.long, device=device)
+        t_tensor = torch.full((B,), t, dtype=torch.long, device=device)
+
+        # Predict noise
         out = model(x, t_tensor)
-        # If model predicts both mean and variance
-        if out.shape[1] == 6:
-            eps, logvar = torch.split(out, 3, dim=1)
-        else:
-            eps = out
+        # If model predicts mean and variance, only take the mean
+        eps = out[:, :3] if out.shape[1] == 6 else out
 
-        alpha_bar_t = alphas_cumprod[last_t]
-        x0_pred = (x - np.sqrt(1.0 - alpha_bar_t) * eps) / np.sqrt(alpha_bar_t)
-        x = x0_pred  # move to estimated x0
+        # Fetch alpha bars
+        alpha_bar_t = alphas_cumprod[t_tensor].view(B, 1, 1, 1)
+        alpha_bar_next = alphas_cumprod[t_next].view(B, 1, 1, 1)
+
+        sqrt_ab_t = torch.sqrt(alpha_bar_t)
+        sqrt_one_minus_ab_t = torch.sqrt(1.0 - alpha_bar_t)
+        sqrt_ab_next = torch.sqrt(alpha_bar_next)
+        sqrt_one_minus_ab_next = torch.sqrt(1.0 - alpha_bar_next)
+
+        # Compute predicted x0
+        x0_pred = (x - sqrt_one_minus_ab_t * eps) / sqrt_ab_t
+
+        # Deterministic DDIM update
+        x = sqrt_ab_next * x0_pred + sqrt_one_minus_ab_next * eps
 
     if logger is not None:
-        logger.info("DDIM reverse diffusion completed.")
-
+        logger.info(f"DDIM diffusion completed.")
     return x
 
 if __name__ == "__main__":
@@ -98,8 +78,8 @@ if __name__ == "__main__":
     DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
     CHECKPOINT_PATH = "models/checkpoints/256x256_diffusion_uncond.pt"
     IMAGE_SIZE = 256
-    T_DIFFUSION = 40
-    T_REMOV = 6 #Larger T_remov → stronger style removal (more style details removed). 
+    S_FOR = 40
+    S_REV = 6
     IMAGE_PATH = "data/content/"
     OUTPUT_DIR = "output/"
     OUTPUT_PREFIX = "style_removal__"
@@ -124,7 +104,7 @@ if __name__ == "__main__":
     options.update({
         'attention_resolutions': '32,16,8',
         'class_cond': False,
-        'diffusion_steps': T_DIFFUSION,
+        'diffusion_steps': S_FOR,
         'image_size': IMAGE_SIZE,
         'learn_sigma': True,
         'noise_schedule': 'linear',
@@ -144,9 +124,9 @@ if __name__ == "__main__":
     #convert luma image into tensor
     x0 = prepare_image_as_tensor(Image.fromarray(image_luma), image_size=IMAGE_SIZE, device=DEVICE)
 
-    #forward diffusion
     t = torch.tensor([diffusion.num_timesteps - 1]).to(DEVICE)
-    x_t = diffusion.q_sample(x0, t, torch.randn_like(x0))
+    ddim_timesteps_forward = np.linspace(0, diffusion.num_timesteps - 1, S_FOR, dtype=int)
+    x_t = ddim_deterministic(x0, model, diffusion, ddim_timesteps_forward, DEVICE)
 
     image_noised = x_t.squeeze(0).permute(1, 2, 0).cpu().numpy()
     image_noised = ((image_noised + 1) / 2).clip(0, 1)  # scale back to [0,1
@@ -155,8 +135,10 @@ if __name__ == "__main__":
     plt.savefig(os.path.join(OUTPUT_DIR, OUTPUT_PREFIX + "noised_image.png"), bbox_inches='tight', dpi=300)
 
     #reverse diffusion with fewer steps (DDIM)
-    ddim_timesteps = make_ddim_timesteps(T_DIFFUSION, T_REMOV)
-    x0_est = ddim_reverse_deterministic(x_t, model, diffusion, ddim_timesteps, device=DEVICE)
+    ddim_timesteps_backward = np.linspace(0, S_FOR-1, S_REV, dtype=int)
+    ddim_timesteps_backward = ddim_timesteps_backward[::-1]
+    assert ddim_timesteps_backward[-1]==0
+    x0_est = ddim_deterministic(x_t, model, diffusion, ddim_timesteps_backward, device=DEVICE)
 
     image_recon = x0_est.squeeze(0).permute(1, 2, 0).cpu().numpy()
     image_recon = ((image_recon + 1) / 2).clip(0, 1)  # scale back to [0,1
