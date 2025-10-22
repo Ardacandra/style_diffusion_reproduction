@@ -79,8 +79,8 @@ if __name__ == "__main__":
     CHECKPOINT_PATH = "models/checkpoints/256x256_diffusion_uncond.pt"
     IMAGE_SIZE = 256
     S_FOR = 40
-    S_REV = 6
-    IMAGE_PATH = "data/content/"
+    S_REV = 30
+    IMAGE_PATH = "data/style/van_gogh/"
     OUTPUT_DIR = "output/"
     OUTPUT_PREFIX = "style_removal__"
 
@@ -129,7 +129,7 @@ if __name__ == "__main__":
     x_t = ddim_deterministic(x0, model, diffusion, ddim_timesteps_forward, DEVICE)
 
     image_noised = x_t.squeeze(0).permute(1, 2, 0).cpu().numpy()
-    image_noised = ((image_noised + 1) / 2).clip(0, 1)  # scale back to [0,1
+    image_noised = ((image_noised + 1) / 2).clip(0, 1)  # scale back to [0,1]
     plt.imshow(image_noised)
     plt.title("Noised Image After Forward Diffusion")
     plt.savefig(os.path.join(OUTPUT_DIR, OUTPUT_PREFIX + "noised_image.png"), bbox_inches='tight', dpi=300)
@@ -141,7 +141,7 @@ if __name__ == "__main__":
     x0_est = ddim_deterministic(x_t, model, diffusion, ddim_timesteps_backward, device=DEVICE)
 
     image_recon = x0_est.squeeze(0).permute(1, 2, 0).cpu().numpy()
-    image_recon = ((image_recon + 1) / 2).clip(0, 1)  # scale back to [0,1
-    plt.imshow(image_recon)
+    image_recon = ((image_recon + 1) / 2).clip(0, 1)  # scale back to [0,1]
+    plt.imshow(image_recon[..., 0], cmap='gray')
     plt.title("Reconstructed Image After Style Removal")
     plt.savefig(os.path.join(OUTPUT_DIR, OUTPUT_PREFIX + "recon_image.png"), bbox_inches='tight', dpi=300)

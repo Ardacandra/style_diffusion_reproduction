@@ -16,4 +16,4 @@ run_mode: "style_removal" #options: "style_removal", "style_transfer"
 device: "cpu" #options: "cpu", "cuda"
 image_size: 256
 s_for: 40
-s_rev: 6
+s_rev: 30
