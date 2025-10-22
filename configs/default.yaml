@@ -1,6 +1,6 @@
 #data path
 content_path: "./data/content"
-style_path: "./data/style"
+style_path: "./data/style/van_gogh/000.jpg"
 
 #output path
 output_path: "./output"
@@ -16,5 +16,4 @@ run_mode: "style_removal" #options: "style_removal", "style_transfer"
 device: "cpu" #options: "cpu", "cuda"
 image_size: 256
 t_diffusion: 1000
-t_remov: 100
-batch_size: 4
+t_remov: 3
