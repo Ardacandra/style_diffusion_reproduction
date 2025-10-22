@@ -98,8 +98,8 @@ if __name__ == "__main__":
     DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
     CHECKPOINT_PATH = "models/checkpoints/256x256_diffusion_uncond.pt"
     IMAGE_SIZE = 256
-    T_DIFFUSION = 1000
-    T_REMOV = 100 #Larger T_remov → stronger style removal (more style details removed). 
+    T_DIFFUSION = 40
+    T_REMOV = 6 #Larger T_remov → stronger style removal (more style details removed). 
     IMAGE_PATH = "data/content/"
     OUTPUT_DIR = "output/"
     OUTPUT_PREFIX = "style_removal__"

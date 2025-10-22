@@ -15,5 +15,5 @@ run_mode: "style_removal" #options: "style_removal", "style_transfer"
 #style removal parameters
 device: "cpu" #options: "cpu", "cuda"
 image_size: 256
-t_diffusion: 1000
-t_remov: 3
+t_diffusion: 40
+t_remov: 6
