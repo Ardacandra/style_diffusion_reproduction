@@ -32,6 +32,27 @@ def main(config_path):
     logger = logging.getLogger("Main")
     logger.info(f"Run parameters: {cfg}")
 
+    options = model_and_diffusion_defaults()
+    options.update({
+        'attention_resolutions': '32,16,8',
+        'class_cond': False,
+        'diffusion_steps': cfg['s_for'],
+        'image_size': cfg['image_size'],
+        'learn_sigma': True,
+        'noise_schedule': 'linear',
+        'num_channels': 256,
+        'num_head_channels': 64,
+        'num_res_blocks': 2,
+        'resblock_updown': True,
+        'use_fp16': False,
+        'use_scale_shift_norm': True,
+    })
+
+    model, diffusion = create_model_and_diffusion(**options)
+    state_dict = torch.load(cfg['pretrained_model_path'], map_location=cfg['device'], weights_only=True)
+    model.load_state_dict(state_dict)
+    model.eval().to(cfg['device'])
+
     if cfg['run_mode'] == 'style_removal':
         logger.info("Starting style removal...")
 
@@ -54,27 +75,6 @@ def main(config_path):
         style_image_luma = rgb_to_luma_601(style_image)       
 
         #forward diffusion ODE/inversion to obtain latents
-        options = model_and_diffusion_defaults()
-        options.update({
-            'attention_resolutions': '32,16,8',
-            'class_cond': False,
-            'diffusion_steps': cfg['s_for'],
-            'image_size': cfg['image_size'],
-            'learn_sigma': True,
-            'noise_schedule': 'linear',
-            'num_channels': 256,
-            'num_head_channels': 64,
-            'num_res_blocks': 2,
-            'resblock_updown': True,
-            'use_fp16': False,
-            'use_scale_shift_norm': True,
-        })
-
-        model, diffusion = create_model_and_diffusion(**options)
-        state_dict = torch.load(cfg['pretrained_model_path'], map_location=cfg['device'], weights_only=True)
-        model.load_state_dict(state_dict)
-        model.eval().to(cfg['device'])
-
         #convert luma image into tensor
         x0 = prepare_image_as_tensor(Image.fromarray(style_image_luma), image_size=cfg['image_size'], device=cfg['device'])
 
@@ -96,6 +96,44 @@ def main(config_path):
         image_recon = (image_recon * 255).astype(np.uint8)  # [0, 255], uint8
         Image.fromarray(image_recon).save(os.path.join(style_output_path, 'style.jpg'))
         logger.info(f"Style image processed and saved to {style_output_path}")
+    
+    if cfg['run_mode'] == 'style_transfer':
+        logger.info("Starting style transfer...")
+        
+        if cfg['precompute_latents']:
+            logger.info("Precomputing latents...")
+
+            ddim_timesteps_forward = np.linspace(0, diffusion.num_timesteps - 1, cfg['s_for'], dtype=int)
+
+            #precompute content latents
+            content_latent_output_path = os.path.join(run_output_path, "content_latents")
+            os.makedirs(content_latent_output_path, exist_ok=True)
+            
+            for image_file in os.listdir(cfg['content_processed_path']):
+                if image_file.lower().endswith(('.jpg', '.jpeg', '.png')):
+                    logger.info(f"Generating latent for content image: {image_file}")
+
+                    image = Image.open(os.path.join(cfg['content_processed_path'], image_file))
+                    image_tensor = prepare_image_as_tensor(image, image_size=cfg['image_size'], device=cfg['device'])
+
+                    image_latent = ddim_deterministic(image_tensor, model, diffusion, ddim_timesteps_forward, cfg['device'], logger=logger)
+                    torch.save(image_latent, os.path.join(content_latent_output_path, f"{image_file.lower().split('.')[0]}.pt"))
+
+                    logger.info(f"{image_file} processed and saved to {content_latent_output_path}") 
+            
+            #precompute style latent
+            style_latent_output_path = os.path.join(run_output_path, "style_latents")
+            os.makedirs(style_latent_output_path, exist_ok=True) 
+
+            logger.info(f"Generating latent for style image: {cfg['style_processed_path']}")
+
+            style = Image.open(cfg['style_processed_path'])
+            style_tensor = prepare_image_as_tensor(style, image_size=cfg['image_size'], device=cfg['device'])
+
+            style_latent = ddim_deterministic(style_tensor, model, diffusion, ddim_timesteps_forward, cfg['device'], logger=logger)
+            torch.save(style_latent, os.path.join(style_latent_output_path, "style.pt"))
+
+            logger.info(f"Style image processed and saved to {style_latent_output_path}")        
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
