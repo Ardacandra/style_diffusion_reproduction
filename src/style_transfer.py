@@ -4,6 +4,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 import numpy as np
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import torchvision.transforms as T
 from PIL import Image
 import matplotlib.pyplot as plt
@@ -24,7 +25,7 @@ def style_reconstruction_loss(I_ss: torch.Tensor, I_s: torch.Tensor) -> torch.Te
     Returns:
         loss (torch.Tensor): A scalar tensor representing the loss.
     """
-    return torch.tensor(0.0, requires_grad=True, device=I_ss.device)
+    return F.mse_loss(I_ss, I_s)
 
 def style_disentanglement_loss(I_ci: torch.Tensor, I_cs: torch.Tensor, I_ss: torch.Tensor, I_s: torch.Tensor) -> torch.Tensor:
     """
