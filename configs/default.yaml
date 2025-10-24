@@ -23,4 +23,5 @@ content_processed_path: "./output/test_run/content_processed" #path containing c
 style_processed_path: "./output/test_run/style_processed/style.jpg" #path containing style image after style removal
 k: 5 #epochs
 k_s: 50 #number of repetitions for style construction loss optimization
+lr: 0.00001 #learning rate
 precompute_latents: False #set False if latents are already precomputed
