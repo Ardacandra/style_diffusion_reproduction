@@ -11,6 +11,7 @@ import copy
 from guided_diffusion.script_util import create_model_and_diffusion, model_and_diffusion_defaults
 
 from src.helper import *
+from src.style_removal import ddim_deterministic
 
 def style_reconstruction_loss(I_ss: torch.Tensor, I_s: torch.Tensor) -> torch.Tensor:
     """
@@ -71,13 +72,13 @@ def style_diffusion_fine_tuning(
         k_s (int): Number of inner steps for style reconstruction loss optimization.
         lr (float): Learning rate for fine-tuning.
         device (str): Device identifier, e.g., "cuda" or "cpu".
-    """
-    #get diffusion variables
-    alphas_cumprod = torch.tensor(diffusion.alphas_cumprod, dtype=torch.float32, device=device)
 
+    Returns:
+        model_finetuned (nn.Module): fine-tuned diffusion model
+    """
     #initialize fine-tuned model
-    model_finetune = copy.deepcopy(model).to(device)
-    optimizer = torch.optim.Adam(model_finetune.parameters(), lr=lr)
+    model_finetuned = copy.deepcopy(model).to(device)
+    optimizer = torch.optim.Adam(model_finetuned.parameters(), lr=lr)
 
     #training loop
     for iter in range(k):
@@ -88,15 +89,20 @@ def style_diffusion_fine_tuning(
             for s in reversed(range(1, s_rev)):
                 t = torch.full((x_t.size(0),), s, device=device, dtype=torch.long)
 
-                #DDIM backward step
-                eps_pred = model_finetune(x_t, t)
-                x_t_prev = (
-                    torch.sqrt(alphas_cumprod[s - 1]) * model_finetune.decode(x_t, t)
-                    + torch.sqrt(1 - alphas_cumprod[s - 1]) * eps_pred
+                # Use DDIM deterministic reverse diffusion
+                ddim_timesteps_backward = np.linspace(s-1, s, 2, dtype=int)
+                ddim_timesteps_backward = ddim_timesteps_backward[::-1]
+
+                x_t_prev = ddim_deterministic(
+                    x_start=x_t,
+                    model=model_finetuned,
+                    diffusion=diffusion,
+                    ddim_timesteps=ddim_timesteps_backward,
+                    device=device,
                 )
 
                 #style reconstruction loss evaluation
-                I_ss = model_finetune.decode(x_t, t)
+                I_ss = x_t_prev.clone().to(device)
                 loss_sr = style_reconstruction_loss(I_ss, I_s)
                 optimizer.zero_grad()
                 loss_sr.backward()
@@ -110,22 +116,29 @@ def style_diffusion_fine_tuning(
             for s in reversed(range(1, s_rev)):
                 t = torch.full((x_t.size(0),), s, device=device, dtype=torch.long)
 
-                #DDIM backward step
-                eps_pred = model_finetune(x_t, t)
-                x_t_prev = (
-                    torch.sqrt(alphas_cumprod[s - 1]) * model_finetune.decode(x_t, t)
-                    + torch.sqrt(1 - alphas_cumprod[s - 1]) * eps_pred
-                )
+                # Use DDIM deterministic reverse diffusion
+                ddim_timesteps_backward = np.linspace(s-1, s, 2, dtype=int)
+                ddim_timesteps_backward = ddim_timesteps_backward[::-1]
 
+                x_t_prev = ddim_deterministic(
+                    x_start=x_t,
+                    model=model_finetuned,
+                    diffusion=diffusion,
+                    ddim_timesteps=ddim_timesteps_backward,
+                    device=device,
+                )
+                
                 #style disentanglement loss evaluation
                 I_ci = content_latents[i].clone().to(device)
-                I_cs = model_finetune.decode(x_t, t)
+                I_cs = x_t_prev.clone().to(device)
                 loss_sd = style_disentanglement_loss(I_ci, I_cs, I_ss, I_s)
                 optimizer.zero_grad()
                 loss_sd.backward()
                 optimizer.step()
 
                 x_t = x_t_prev.detach()
+    
+    return model_finetuned
 
 if __name__ == "__main__":
     pass
