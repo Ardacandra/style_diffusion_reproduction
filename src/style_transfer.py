@@ -175,6 +175,7 @@ if __name__ == "__main__":
     K = 5
     K_S = 50
     LR = 0.00005
+    N_CONTENT_SAMPLE = 5
 
     CONTENT_LATENTS_PATH = "output/test_run/content_latents/"
     STYLE_ORIGINAL_PATH = "data/style/van_gogh/000.jpg"
@@ -192,3 +193,35 @@ if __name__ == "__main__":
     )
     logger = logging.getLogger("Main")
     logger.info(f"Starting example usage of style transfer...")
+
+    # #load model
+    options = model_and_diffusion_defaults()
+    options.update({
+        'attention_resolutions': '32,16,8',
+        'class_cond': False,
+        'diffusion_steps': S_FOR,
+        'image_size': IMAGE_SIZE,
+        'learn_sigma': True,
+        'noise_schedule': 'linear',
+        'num_channels': 256,
+        'num_head_channels': 64,
+        'num_res_blocks': 2,
+        'resblock_updown': True,
+        'use_fp16': False,
+        'use_scale_shift_norm': True,
+    })
+
+    model, diffusion = create_model_and_diffusion(**options)
+    state_dict = torch.load(CHECKPOINT_PATH, map_location=DEVICE, weights_only=True)
+    model.load_state_dict(state_dict)
+    model.eval().to(DEVICE)
+
+    #get sample style original and latent
+    original_style = Image.open(STYLE_ORIGINAL_PATH)
+    original_style_tensor = prepare_image_as_tensor(original_style, image_size=IMAGE_SIZE, device=DEVICE)
+
+    style_latent = torch.load(STYLE_LATENT_PATH)
+    
+    #get sample content latents
+
+    # for image_file in os.listdir(CONTENT_LATENTS_PATH):
