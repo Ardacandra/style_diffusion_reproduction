@@ -223,5 +223,16 @@ if __name__ == "__main__":
     style_latent = torch.load(STYLE_LATENT_PATH, map_location=DEVICE, weights_only=True)
     
     #get sample content latents
+    content_latent_files = [f for f in os.listdir(CONTENT_LATENTS_PATH) if f.lower().endswith(('.pt'))]
+    sample_content_latent_files = content_latent_files[:N_CONTENT_SAMPLE]
 
-    # for image_file in os.listdir(CONTENT_LATENTS_PATH):
+    content_latents = []
+    for file in sample_content_latent_files:
+        content_latents.append(
+            torch.load(os.path.join(CONTENT_LATENTS_PATH, file), map_location=DEVICE, weights_only=True)
+        )
+    
+    logger.info(f"original style tensor shape: {original_style_tensor.shape}")
+    logger.info(f"style latent shape: {style_latent.shape}")
+    logger.info(f"content latents sample count: {len(content_latents)}")
+    logger.info(f"content latent shape: {content_latents[0].shape}")
