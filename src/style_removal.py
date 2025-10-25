@@ -10,14 +10,14 @@ from guided_diffusion.script_util import create_model_and_diffusion, model_and_d
 
 from src.helper import *
 
-@torch.no_grad()
 def ddim_deterministic(
     x_start,
     model,
     diffusion,
     ddim_timesteps,
     device,
-    logger=None
+    logger=None,
+    requires_grad=False,
 ):
     """
     DDIM deterministic diffusion (forward or reverse).
@@ -29,48 +29,51 @@ def ddim_deterministic(
         ddim_timesteps: list of timesteps
         device: torch device
         logger: optional logger
+        requires_grad: if False, disables gradient tracking (default)
     Returns:
         x_out: resulting tensor (xt for forward, x0 for reverse)
     """
     
-    if logger is not None:
-        logger.info(f"Starting DDIM diffusion with {len(ddim_timesteps)} steps.")
+    grad_context = torch.enable_grad if requires_grad else torch.no_grad
+    with grad_context():
+        if logger is not None:
+            logger.info(f"Starting DDIM diffusion with {len(ddim_timesteps)} steps.")
 
-    x = x_start.clone()
-    B = x.shape[0]
-    alphas_cumprod = torch.tensor(diffusion.alphas_cumprod, dtype=torch.float32, device=device)
+        x = x_start.clone()
+        B = x.shape[0]
+        alphas_cumprod = torch.tensor(diffusion.alphas_cumprod, dtype=torch.float32, device=device)
 
-    for i in range(len(ddim_timesteps) - 1):
-        t = int(ddim_timesteps[i])
-        t_next = int(ddim_timesteps[i + 1])
+        for i in range(len(ddim_timesteps) - 1):
+            t = int(ddim_timesteps[i])
+            t_next = int(ddim_timesteps[i + 1])
+
+            if logger is not None:
+                logger.info(f"DDIM step {i+1}/{len(ddim_timesteps)-1}: {t} -> {t_next}")
+
+            t_tensor = torch.full((B,), t, dtype=torch.long, device=device)
+
+            # Predict noise
+            out = model(x, t_tensor)
+            # If model predicts mean and variance, only take the mean
+            eps = out[:, :3] if out.shape[1] == 6 else out
+
+            # Fetch alpha bars
+            alpha_bar_t = alphas_cumprod[t_tensor].view(B, 1, 1, 1)
+            alpha_bar_next = alphas_cumprod[t_next].view(B, 1, 1, 1)
+
+            sqrt_ab_t = torch.sqrt(alpha_bar_t)
+            sqrt_one_minus_ab_t = torch.sqrt(1.0 - alpha_bar_t)
+            sqrt_ab_next = torch.sqrt(alpha_bar_next)
+            sqrt_one_minus_ab_next = torch.sqrt(1.0 - alpha_bar_next)
+
+            # Compute predicted x0
+            x0_pred = (x - sqrt_one_minus_ab_t * eps) / sqrt_ab_t
+
+            # Deterministic DDIM update
+            x = sqrt_ab_next * x0_pred + sqrt_one_minus_ab_next * eps
 
         if logger is not None:
-            logger.info(f"DDIM step {i+1}/{len(ddim_timesteps)-1}: {t} -> {t_next}")
-
-        t_tensor = torch.full((B,), t, dtype=torch.long, device=device)
-
-        # Predict noise
-        out = model(x, t_tensor)
-        # If model predicts mean and variance, only take the mean
-        eps = out[:, :3] if out.shape[1] == 6 else out
-
-        # Fetch alpha bars
-        alpha_bar_t = alphas_cumprod[t_tensor].view(B, 1, 1, 1)
-        alpha_bar_next = alphas_cumprod[t_next].view(B, 1, 1, 1)
-
-        sqrt_ab_t = torch.sqrt(alpha_bar_t)
-        sqrt_one_minus_ab_t = torch.sqrt(1.0 - alpha_bar_t)
-        sqrt_ab_next = torch.sqrt(alpha_bar_next)
-        sqrt_one_minus_ab_next = torch.sqrt(1.0 - alpha_bar_next)
-
-        # Compute predicted x0
-        x0_pred = (x - sqrt_one_minus_ab_t * eps) / sqrt_ab_t
-
-        # Deterministic DDIM update
-        x = sqrt_ab_next * x0_pred + sqrt_one_minus_ab_next * eps
-
-    if logger is not None:
-        logger.info(f"DDIM diffusion completed.")
+            logger.info(f"DDIM diffusion completed.")
     return x
 
 if __name__ == "__main__":
