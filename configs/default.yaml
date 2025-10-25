@@ -10,18 +10,23 @@ pretrained_model_path: "./models/checkpoints/256x256_diffusion_uncond.pt"
 
 #run parameters
 run_id: "test_run"
-# run_mode: "style_removal" #options: "style_removal", "style_transfer"
-run_mode: "style_transfer"
+run_mode: "style_removal" #options: "style_removal", "style_transfer"
+# run_mode: "style_transfer"
 
-device: "cpu" #options: "cpu", "cuda"
+device: "cuda" #options: "cpu", "cuda"
 image_size: 256
-s_for: 40
-s_rev: 30
+style_removal_s_for: 40
+style_removal_s_rev: 40
 
 #style transfer specific parameters
 content_processed_path: "./output/test_run/content_processed" #path containing content images after style removal
 style_processed_path: "./output/test_run/style_processed/style.jpg" #path containing style image after style removal
+style_transfer_s_for: 40
+style_transfer_s_rev: 6
 k: 5 #epochs
 k_s: 50 #number of repetitions for style construction loss optimization
-lr: 0.00001 #learning rate
-precompute_latents: False #set False if latents are already precomputed
+lr: 0.000004 #learning rate
+lr_multiplier: 1.2 #learning rate linear multiplier per epoch
+lambda_l1: 10 #hyperparameter for style disentanglement loss
+lambda_dir: 1 #hyperparameter for style disentanglement loss
+precompute_latents: True #set False if latents are already precomputed

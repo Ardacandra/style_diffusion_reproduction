@@ -82,7 +82,7 @@ if __name__ == "__main__":
     CHECKPOINT_PATH = "models/checkpoints/256x256_diffusion_uncond.pt"
     IMAGE_SIZE = 256
     S_FOR = 40
-    S_REV = 30
+    S_REV = 40
     IMAGE_PATH = "data/style/van_gogh/"
     OUTPUT_DIR = "output/"
     OUTPUT_PREFIX = "style_removal__"
@@ -137,7 +137,7 @@ if __name__ == "__main__":
     plt.title("Noised Image After Forward Diffusion")
     plt.savefig(os.path.join(OUTPUT_DIR, OUTPUT_PREFIX + "noised_image.png"), bbox_inches='tight', dpi=300)
 
-    #reverse diffusion with fewer steps (DDIM)
+    #reverse diffusion (DDIM)
     ddim_timesteps_backward = np.linspace(0, S_FOR-1, S_REV, dtype=int)
     ddim_timesteps_backward = ddim_timesteps_backward[::-1]
     assert ddim_timesteps_backward[-1]==0

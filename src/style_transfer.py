@@ -216,7 +216,7 @@ if __name__ == "__main__":
     model, diffusion = create_model_and_diffusion(**options)
     state_dict = torch.load(CHECKPOINT_PATH, map_location=DEVICE, weights_only=True)
     model.load_state_dict(state_dict)
-    model.eval().to(DEVICE)
+    model.to(DEVICE)
 
     #get sample style original and latent
     original_style = Image.open(STYLE_ORIGINAL_PATH)
