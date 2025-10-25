@@ -128,7 +128,7 @@ def main(config_path):
             model.load_state_dict(state_dict)
             model.eval().to(cfg['device'])
 
-            ddim_timesteps_forward = np.linspace(0, diffusion.num_timesteps - 1, cfg['s_for'], dtype=int)
+            ddim_timesteps_forward = np.linspace(0, diffusion.num_timesteps - 1, cfg['style_transfer_s_for'], dtype=int)
 
             #precompute content latents
             content_latent_output_path = os.path.join(run_output_path, "content_latents")
