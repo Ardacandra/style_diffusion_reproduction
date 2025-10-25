@@ -220,7 +220,7 @@ if __name__ == "__main__":
     original_style = Image.open(STYLE_ORIGINAL_PATH)
     original_style_tensor = prepare_image_as_tensor(original_style, image_size=IMAGE_SIZE, device=DEVICE)
 
-    style_latent = torch.load(STYLE_LATENT_PATH)
+    style_latent = torch.load(STYLE_LATENT_PATH, map_location=DEVICE, weights_only=True)
     
     #get sample content latents
 
