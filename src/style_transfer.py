@@ -9,6 +9,7 @@ import torchvision.transforms as T
 from PIL import Image
 import matplotlib.pyplot as plt
 import copy
+import logging
 from guided_diffusion.script_util import create_model_and_diffusion, model_and_diffusion_defaults
 
 from src.helper import *
@@ -164,4 +165,30 @@ def style_diffusion_fine_tuning(
     return model_finetuned
 
 if __name__ == "__main__":
-    pass
+    #Example usage
+    DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+    CHECKPOINT_PATH = "models/checkpoints/256x256_diffusion_uncond.pt"
+    IMAGE_SIZE = 256
+    S_FOR = 40
+    S_REV = 30
+
+    K = 5
+    K_S = 50
+    LR = 0.00005
+
+    CONTENT_LATENTS_PATH = "output/test_run/content_latents/"
+    STYLE_ORIGINAL_PATH = "data/style/van_gogh/000.jpg"
+    STYLE_LATENT_PATH = "output/test_run/style_latents/style.pt"
+
+    OUTPUT_DIR = "output/"
+    OUTPUT_PREFIX = "style_transfer__"
+
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
+
+    logging.basicConfig(
+        filename=os.path.join(OUTPUT_DIR, f"style_transfer.log"),
+        level=logging.INFO,
+        format="%(asctime)s - %(levelname)s - %(message)s"
+    )
+    logger = logging.getLogger("Main")
+    logger.info(f"Starting example usage of style transfer...")
