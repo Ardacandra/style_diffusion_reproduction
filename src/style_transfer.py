@@ -52,7 +52,8 @@ def style_diffusion_fine_tuning(
     k: int,
     k_s: int,
     lr: float,
-    device: str
+    device: str,
+    logger=None,
 ):
     """
     Fine-tune a diffusion model using alternating style reconstruction and style disentanglement objectives.
@@ -73,21 +74,34 @@ def style_diffusion_fine_tuning(
         k_s (int): Number of inner steps for style reconstruction loss optimization.
         lr (float): Learning rate for fine-tuning.
         device (str): Device identifier, e.g., "cuda" or "cpu".
-
+        logger (logging.logger): optional logger
     Returns:
         model_finetuned (nn.Module): fine-tuned diffusion model
     """
+    
+    if logger is not None:
+        logger.info(f"Starting style transfer fine-tuning...")
+
     #initialize fine-tuned model
     model_finetuned = copy.deepcopy(model).to(device)
     optimizer = torch.optim.Adam(model_finetuned.parameters(), lr=lr)
 
     #training loop
     for iter in range(k):
+        if logger is not None:
+            logger.info(f"Starting fine-tuning iteration {iter+1}...")
+
         #optimize the style reconstruction loss
         I_s = style_tensor.clone().to(device)
         for i in range(k_s):
+            if logger is not None:
+                logger.info(f"Starting style reconstruction iteration {i+1}...")
+
             x_t = style_latent.clone().to(device)
             for s in reversed(range(1, s_rev)):
+                if logger is not None:
+                    logger.info(f"DDIM step: {s} -> {s-1}")
+
                 t = torch.full((x_t.size(0),), s, device=device, dtype=torch.long)
 
                 # Use DDIM deterministic reverse diffusion
@@ -113,8 +127,14 @@ def style_diffusion_fine_tuning(
         
         #optimize the style disentanglement loss
         for i in range(len(content_latents)):
+            if logger is not None:
+                logger.info(f"Starting style disentanglement for sample number {i+1}...")
+
             x_t = content_latents[i].clone().to(device)
             for s in reversed(range(1, s_rev)):
+                if logger is not None:
+                    logger.info(f"DDIM step: {s} -> {s-1}")
+            
                 t = torch.full((x_t.size(0),), s, device=device, dtype=torch.long)
 
                 # Use DDIM deterministic reverse diffusion
@@ -139,6 +159,8 @@ def style_diffusion_fine_tuning(
 
                 x_t = x_t_prev.detach()
     
+    if logger is not None:
+        logger.info("Style transfer fine-tuning completed.")
     return model_finetuned
 
 if __name__ == "__main__":
