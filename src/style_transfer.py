@@ -115,6 +115,7 @@ def style_diffusion_fine_tuning(
                     diffusion=diffusion,
                     ddim_timesteps=ddim_timesteps_backward,
                     device=device,
+                    requires_grad=True,
                 )
 
                 #style reconstruction loss evaluation
@@ -148,6 +149,7 @@ def style_diffusion_fine_tuning(
                     diffusion=diffusion,
                     ddim_timesteps=ddim_timesteps_backward,
                     device=device,
+                    requires_grad=True,
                 )
                 
                 #style disentanglement loss evaluation
@@ -236,3 +238,19 @@ if __name__ == "__main__":
     logger.info(f"style latent shape: {style_latent.shape}")
     logger.info(f"content latents sample count: {len(content_latents)}")
     logger.info(f"content latent shape: {content_latents[0].shape}")
+
+    #apply style diffusion fine-tuning
+    model_finetuned = style_diffusion_fine_tuning(
+        original_style_tensor,
+        style_latent,
+        content_latents,
+        model,
+        diffusion,
+        S_REV,
+        K,
+        K_S,
+        LR,
+        DEVICE,
+        logger=logger,
+    )
+    torch.save(model_finetuned.state_dict(), os.path.join(OUTPUT_DIR, f"{OUTPUT_PREFIX}finetuned_style_model.pt"))
