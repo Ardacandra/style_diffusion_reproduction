@@ -181,7 +181,8 @@ def style_diffusion_fine_tuning(
 
 if __name__ == "__main__":
     #Example usage
-    DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+    # DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+    DEVICE = "cpu"
     CHECKPOINT_PATH = "models/checkpoints/256x256_diffusion_uncond.pt"
     IMAGE_SIZE = 256
     # S_FOR = 40
@@ -195,7 +196,7 @@ if __name__ == "__main__":
     # LAMBDA_DIR = 1
 
     S_FOR = 30
-    S_REV = 10
+    S_REV = 4
 
     K = 1
     K_S = 1
@@ -284,3 +285,14 @@ if __name__ == "__main__":
         logger=logger,
     )
     torch.save(model_finetuned.state_dict(), os.path.join(OUTPUT_DIR, f"{OUTPUT_PREFIX}finetuned_style_model.pt"))
+
+    #generate sample stylized image
+    x_t = content_latents[0].clone().to(DEVICE)
+    ddim_timesteps_backward = np.linspace(0, S_FOR-1, S_REV, dtype=int)
+    ddim_timesteps_backward = ddim_timesteps_backward[::-1]
+    x0_est = ddim_deterministic(x_t, model_finetuned, diffusion, ddim_timesteps_backward, device=DEVICE)
+
+    stylized_image = x0_est.squeeze(0).permute(1, 2, 0).cpu().numpy()
+    stylized_image = ((stylized_image + 1) / 2).clip(0, 1)  # scale back to [0,1]
+    plt.imshow(stylized_image)
+    plt.savefig(os.path.join(OUTPUT_DIR, OUTPUT_PREFIX + "sample_stylized_image.png"), bbox_inches='tight', dpi=300)
