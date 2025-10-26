@@ -16,6 +16,45 @@ import clip
 from src.helper import *
 from src.style_removal import ddim_deterministic
 
+# CLIP imagenet-like normalization used by OpenAI CLIP (ViT-B/32)
+_CLIP_MEAN = torch.tensor([0.48145466, 0.4578275, 0.40821073])
+_CLIP_STD  = torch.tensor([0.26862954, 0.26130258, 0.27577711])
+
+def tensor_to_clip_input_tensor(img: torch.Tensor, size: int = 224, device: str = "cuda"):
+    """
+    Convert a torch tensor (latent or image) into a CLIP-friendly tensor **without** leaving torch.
+    Expects img shape [B, C, H, W] or [C, H, W]. Values can be in [-1,1] or [0,1].
+    Returns float tensor of shape [B, 3, size, size] on `device`.
+    Differentiable (no cpu/numpy/PIL).
+    """
+    if img.dim() == 3:
+        img = img.unsqueeze(0)  # [1, C, H, W]
+
+    img = img.to(dtype=torch.float32, device=device)
+
+    # If in [-1,1], map to [0,1]
+    if img.min() < 0.0:
+        img = (img.clamp(-1, 1) + 1.0) / 2.0
+    else:
+        img = img.clamp(0.0, 1.0)
+
+    # If single-channel, repeat to 3 channels
+    if img.shape[1] == 1:
+        img = img.repeat(1, 3, 1, 1)
+    elif img.shape[1] == 4:
+        # if RGBA, drop alpha
+        img = img[:, :3, :, :]
+
+    # Resize to CLIP input size using bilinear interpolation
+    img = F.interpolate(img, size=(size, size), mode="bilinear", align_corners=False)
+
+    # Normalize with CLIP mean/std
+    mean = _CLIP_MEAN.to(device).view(1, 3, 1, 1)
+    std = _CLIP_STD.to(device).view(1, 3, 1, 1)
+    img = (img - mean) / std
+
+    return img  # differentiable tensor on device
+
 def style_reconstruction_loss(I_ss: torch.Tensor, I_s: torch.Tensor) -> torch.Tensor:
     """
     Compute the style reconstruction loss between reconstructed and reference style images.
@@ -47,19 +86,10 @@ def style_disentanglement_loss(f_ci: torch.Tensor, f_cs: torch.Tensor, f_ss: tor
     #L1 loss
     d_s = f_s - f_ss
     d_cs = f_cs - f_ci
-    l1_loss = F.l1_loss(d_cs - d_s)
+    l1_loss = F.l1_loss(d_cs, d_s)
 
     #direction loss
-    # Flatten to feature vectors
-    d_s_flat = d_s.flatten(1)
-    d_cs_flat = d_cs.flatten(1)
-
-    # Normalize directions
-    d_s_norm = F.normalize(d_s_flat, dim=1)
-    d_cs_norm = F.normalize(d_cs_flat, dim=1)
-
-    # Cosine similarity between directions
-    cosine_sim = (d_cs_norm * d_s_norm).sum(dim=1).mean()
+    cosine_sim = F.cosine_similarity(d_cs, d_s, dim=-1).mean()
     dir_loss = 1 - cosine_sim
 
     #combined loss
@@ -107,7 +137,7 @@ def style_diffusion_fine_tuning(
         lr (float): Learning rate for fine-tuning.
         lr_multiplier (float): Linear learning rate multiplier for fine-tuning.
         lambda_l1 (int): style disentanglement loss hyperparameter to weigh l1 loss
-        lambda__dir (int): style disentanglement loss hyperparameter to weigh direction loss
+        lambda_dir (int): style disentanglement loss hyperparameter to weigh direction loss
         device (str): Device identifier, e.g., "cuda" or "cpu".
         logger (logging.logger): optional logger
     Returns:
@@ -124,13 +154,20 @@ def style_diffusion_fine_tuning(
     lambda_lr = lambda epoch: lr_multiplier ** epoch
     scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lambda_lr)
 
+    #freeze CLIP model weights
+    clip_model.eval()
+    for p in clip_model.parameters():
+        p.requires_grad = False
+
     #training loop
     for iter in range(k):
         if logger is not None:
             logger.info(f"Starting fine-tuning iteration {iter+1}...")
 
+        #initialize style reference I_s
+        I_s = style_tensor.detach().to(device)
+
         #optimize the style reconstruction loss
-        I_s = style_tensor.clone().to(device)
         for i in range(k_s):
             if logger is not None:
                 logger.info(f"Starting style reconstruction iteration {i+1}...")
@@ -139,11 +176,12 @@ def style_diffusion_fine_tuning(
 
             ddim_timesteps_backward = np.linspace(0, diffusion.num_timesteps-1, s_rev, dtype=int)
             ddim_timesteps_backward = ddim_timesteps_backward[::-1]
+
             for step in range(len(ddim_timesteps_backward)-1):
                 
                 # Use DDIM deterministic reverse diffusion
                 if logger is not None:
-                    logger.info(f"DDIM step: {ddim_timesteps_backward[step]} -> {ddim_timesteps_backward[step+1]}")
+                    logger.info(f"Style reconstruction DDIM step: {ddim_timesteps_backward[step]} -> {ddim_timesteps_backward[step+1]}")
 
                 x_t_prev = ddim_deterministic(
                     x_start=x_t,
@@ -155,14 +193,36 @@ def style_diffusion_fine_tuning(
                 )
 
                 #style reconstruction loss evaluation
-                I_ss = x_t_prev.clone().to(device)
+                I_ss = x_t_prev
                 loss_sr = style_reconstruction_loss(I_ss, I_s)
+
                 optimizer.zero_grad()
                 loss_sr.backward()
                 optimizer.step()
 
                 x_t = x_t_prev.detach()
         
+        #initialize style reconstruction reference I_ss
+        x_t_style = style_latent.clone().to(device)
+
+        ddim_timesteps_backward = np.linspace(0, diffusion.num_timesteps-1, s_rev, dtype=int)
+        ddim_timesteps_backward = ddim_timesteps_backward[::-1]
+
+        with torch.no_grad():
+            for step in range(len(ddim_timesteps_backward)-1):
+                if logger is not None:
+                    logger.info(f"Precomputing I_ss: DDIM step {ddim_timesteps_backward[step]} -> {ddim_timesteps_backward[step+1]}")
+
+                x_t_style = ddim_deterministic(
+                    x_start=x_t_style,
+                    model=model_finetuned,
+                    diffusion=diffusion,
+                    ddim_timesteps=[ddim_timesteps_backward[step], ddim_timesteps_backward[step+1]],
+                    device=device,
+                    requires_grad=False,
+                )
+        I_ss = x_t_style.detach()
+            
         #optimize the style disentanglement loss
         for i in range(len(content_latents)):
             if logger is not None:
@@ -172,11 +232,12 @@ def style_diffusion_fine_tuning(
 
             ddim_timesteps_backward = np.linspace(0, diffusion.num_timesteps-1, s_rev, dtype=int)
             ddim_timesteps_backward = ddim_timesteps_backward[::-1]
+
             for step in range(len(ddim_timesteps_backward)-1):
 
                 # Use DDIM deterministic reverse diffusion
                 if logger is not None:
-                    logger.info(f"DDIM step: {ddim_timesteps_backward[step]} -> {ddim_timesteps_backward[step+1]}")
+                    logger.info(f"Style disentanglement DDIM step: {ddim_timesteps_backward[step]} -> {ddim_timesteps_backward[step+1]}")
 
                 x_t_prev = ddim_deterministic(
                     x_start=x_t,
@@ -188,23 +249,23 @@ def style_diffusion_fine_tuning(
                 )
                 
                 #style disentanglement loss evaluation
-                I_ci = content_latents[i].clone().to(device)
-                I_cs = x_t_prev.clone().to(device)
+                I_ci = content_latents[i].detach()
+                I_cs = x_t_prev
 
                 # Apply CLIP's preprocess
                 if logger is not None:
                     logger.info(f"Applying CLIP preprocessing...")
+                
+                #detach tensors that does not flow gradients to the finetuned model
+                f_ci = tensor_to_clip_input_tensor(I_ci, size=224, device=device).detach()
+                f_cs = tensor_to_clip_input_tensor(I_cs, size=224, device=device)
+                f_ss = tensor_to_clip_input_tensor(I_ss, size=224, device=device).detach()
+                f_s  = tensor_to_clip_input_tensor(I_s, size=224, device=device).detach()
 
-                f_ci = clip_preprocess(I_ci).unsqueeze(0).to(device)
-                f_cs = clip_preprocess(I_cs).unsqueeze(0).to(device)
-                f_ss  = clip_preprocess(I_ss).unsqueeze(0).to(device)
-                I_s = clip_preprocess(I_s).unsqueeze(0).to(device)
-
-                with torch.no_grad():
-                    f_ci = F.normalize(clip_model.encode_image(f_ci), dim=-1)
-                    f_cs = F.normalize(clip_model.encode_image(f_cs), dim=-1)
-                    f_ss  = F.normalize(clip_model.encode_image(f_ss), dim=-1)
-                    f_s = F.normalize(clip_model.encode_image(I_s), dim=-1)
+                f_ci = clip_model.encode_image(f_ci)
+                f_cs = clip_model.encode_image(f_cs)
+                f_ss  = clip_model.encode_image(f_ss)
+                f_s = clip_model.encode_image(f_s)
 
                 if logger is not None:
                     logger.info(f"CLIP preprocessing done.")
@@ -232,15 +293,8 @@ if __name__ == "__main__":
     S_FOR = 40
     S_REV = 6
 
-    # K = 5
-    # K_S = 50
-    # LR = 0.000004
-    # LR_MULTIPLIER = 1.2
-    # LAMBDA_L1 = 10
-    # LAMBDA_DIR = 1
-
-    K = 1
-    K_S = 1
+    K = 5
+    K_S = 50
     LR = 0.000004
     LR_MULTIPLIER = 1.2
     LAMBDA_L1 = 10
