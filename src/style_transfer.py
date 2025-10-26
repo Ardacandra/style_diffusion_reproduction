@@ -28,7 +28,7 @@ def style_reconstruction_loss(I_ss: torch.Tensor, I_s: torch.Tensor) -> torch.Te
     """
     return F.mse_loss(I_ss, I_s)
 
-def style_disentanglement_loss(I_ci: torch.Tensor, I_cs: torch.Tensor, I_ss: torch.Tensor, I_s: torch.Tensor) -> torch.Tensor:
+def style_disentanglement_loss(I_ci: torch.Tensor, I_cs: torch.Tensor, I_ss: torch.Tensor, I_s: torch.Tensor, lambda_l1: int, lambda_dir: int,) -> torch.Tensor:
     """
     Compute the style disentanglement loss.
 
@@ -37,6 +37,8 @@ def style_disentanglement_loss(I_ci: torch.Tensor, I_cs: torch.Tensor, I_ss: tor
         I_cs (torch.Tensor): Style-modified content image (decoded from diffusion model).
         I_ss (torch.Tensor): Reconstructed style image from the style latent.
         I_s  (torch.Tensor): Original style reference image.
+        lambda_l1 (int): Hyperparameter to weigh l1 loss.
+        lambda_dir (int): Hyperparameter to weigh direction loss.
 
     Returns:
         loss (torch.Tensor): A scalar tensor representing the loss.
@@ -53,6 +55,9 @@ def style_diffusion_fine_tuning(
     k: int,
     k_s: int,
     lr: float,
+    lr_multiplier: float,
+    lambda_l1: int,
+    lambda_dir: int,
     device: str,
     logger=None,
 ):
@@ -74,6 +79,9 @@ def style_diffusion_fine_tuning(
         k (int): Number of fine-tuning outer iterations.
         k_s (int): Number of inner steps for style reconstruction loss optimization.
         lr (float): Learning rate for fine-tuning.
+        lr_multiplier (float): Linear learning rate multiplier for fine-tuning.
+        lambda_l1 (int): style disentanglement loss hyperparameter to weigh l1 loss
+        lambda__dir (int): style disentanglement loss hyperparameter to weigh direction loss
         device (str): Device identifier, e.g., "cuda" or "cpu".
         logger (logging.logger): optional logger
     Returns:
@@ -86,6 +94,9 @@ def style_diffusion_fine_tuning(
     #initialize fine-tuned model
     model_finetuned = copy.deepcopy(model).to(device)
     optimizer = torch.optim.Adam(model_finetuned.parameters(), lr=lr)
+    #create linear scheduler
+    lambda_lr = lambda epoch: lr_multiplier ** epoch
+    scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lambda_lr)
 
     #training loop
     for iter in range(k):
@@ -155,13 +166,15 @@ def style_diffusion_fine_tuning(
                 #style disentanglement loss evaluation
                 I_ci = content_latents[i].clone().to(device)
                 I_cs = x_t_prev.clone().to(device)
-                loss_sd = style_disentanglement_loss(I_ci, I_cs, I_ss, I_s)
+                loss_sd = style_disentanglement_loss(I_ci, I_cs, I_ss, I_s, lambda_l1, lambda_dir)
                 optimizer.zero_grad()
                 loss_sd.backward()
                 optimizer.step()
 
                 x_t = x_t_prev.detach()
-    
+
+        scheduler.step()
+
     if logger is not None:
         logger.info("Style transfer fine-tuning completed.")
     return model_finetuned
@@ -171,12 +184,26 @@ if __name__ == "__main__":
     DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
     CHECKPOINT_PATH = "models/checkpoints/256x256_diffusion_uncond.pt"
     IMAGE_SIZE = 256
-    S_FOR = 40
-    S_REV = 30
+    # S_FOR = 40
+    # S_REV = 6
 
-    K = 5
-    K_S = 50
-    LR = 0.00005
+    # K = 5
+    # K_S = 50
+    # LR = 0.000004
+    # LR_MULTIPLIER = 1.2
+    # LAMBDA_L1 = 10
+    # LAMBDA_DIR = 1
+
+    S_FOR = 30
+    S_REV = 10
+
+    K = 1
+    K_S = 1
+    LR = 0.000004
+    LR_MULTIPLIER = 1.2
+    LAMBDA_L1 = 10
+    LAMBDA_DIR = 1
+
     N_CONTENT_SAMPLE = 5
 
     CONTENT_LATENTS_PATH = "output/test_run/content_latents/"
@@ -250,6 +277,9 @@ if __name__ == "__main__":
         K,
         K_S,
         LR,
+        LR_MULTIPLIER,
+        LAMBDA_L1,
+        LAMBDA_DIR,
         DEVICE,
         logger=logger,
     )
