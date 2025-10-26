@@ -11,6 +11,7 @@ import matplotlib.pyplot as plt
 import copy
 import logging
 from guided_diffusion.script_util import create_model_and_diffusion, model_and_diffusion_defaults
+import clip
 
 from src.helper import *
 from src.style_removal import ddim_deterministic
@@ -28,22 +29,43 @@ def style_reconstruction_loss(I_ss: torch.Tensor, I_s: torch.Tensor) -> torch.Te
     """
     return F.mse_loss(I_ss, I_s)
 
-def style_disentanglement_loss(I_ci: torch.Tensor, I_cs: torch.Tensor, I_ss: torch.Tensor, I_s: torch.Tensor, lambda_l1: int, lambda_dir: int,) -> torch.Tensor:
+def style_disentanglement_loss(f_ci: torch.Tensor, f_cs: torch.Tensor, f_ss: torch.Tensor, f_s: torch.Tensor, lambda_l1: int, lambda_dir: int,) -> torch.Tensor:
     """
-    Compute the style disentanglement loss.
+    Compute the style disentanglement loss. All tensors has been preprocessed with CLIP for semantic feature embedding.
 
     Args:
-        I_ci (torch.Tensor): Original content image latent or embedding.
-        I_cs (torch.Tensor): Style-modified content image (decoded from diffusion model).
-        I_ss (torch.Tensor): Reconstructed style image from the style latent.
-        I_s  (torch.Tensor): Original style reference image.
+        f_ci (torch.Tensor): Original content image latent or embedding.
+        f_cs (torch.Tensor): Style-modified content image (decoded from diffusion model).
+        f_ss (torch.Tensor): Reconstructed style image from the style latent.
+        f_s  (torch.Tensor): Original style reference image.
         lambda_l1 (int): Hyperparameter to weigh l1 loss.
         lambda_dir (int): Hyperparameter to weigh direction loss.
 
     Returns:
         loss (torch.Tensor): A scalar tensor representing the loss.
     """
-    return torch.tensor(0.0, requires_grad=True, device=I_ci.device)
+    #L1 loss
+    d_s = f_s - f_ss
+    d_cs = f_cs - f_ci
+    l1_loss = F.l1_loss(d_cs - d_s)
+
+    #direction loss
+    # Flatten to feature vectors
+    d_s_flat = d_s.flatten(1)
+    d_cs_flat = d_cs.flatten(1)
+
+    # Normalize directions
+    d_s_norm = F.normalize(d_s_flat, dim=1)
+    d_cs_norm = F.normalize(d_cs_flat, dim=1)
+
+    # Cosine similarity between directions
+    cosine_sim = (d_cs_norm * d_s_norm).sum(dim=1).mean()
+    dir_loss = 1 - cosine_sim
+
+    #combined loss
+    loss = lambda_l1 * l1_loss + lambda_dir * dir_loss
+
+    return loss
 
 def style_diffusion_fine_tuning(
     style_tensor: torch.Tensor,
@@ -51,6 +73,8 @@ def style_diffusion_fine_tuning(
     content_latents: list,
     model: nn.Module,
     diffusion,
+    clip_model,
+    clip_preprocess,
     s_rev: int,
     k: int,
     k_s: int,
@@ -75,6 +99,8 @@ def style_diffusion_fine_tuning(
         content_latents (list[torch.Tensor]): List of latent representations of content images.
         model (nn.Module): The diffusion model to fine-tune.
         diffusion: A diffusion process object that provides 'alphas_cumprod'.
+        clip_model: CLIP model for pre-trained projected.
+        clip_preprocess : CLIP preprocessing.
         s_rev (int): Number of reverse diffusion steps.
         k (int): Number of fine-tuning outer iterations.
         k_s (int): Number of inner steps for style reconstruction loss optimization.
@@ -164,7 +190,27 @@ def style_diffusion_fine_tuning(
                 #style disentanglement loss evaluation
                 I_ci = content_latents[i].clone().to(device)
                 I_cs = x_t_prev.clone().to(device)
-                loss_sd = style_disentanglement_loss(I_ci, I_cs, I_ss, I_s, lambda_l1, lambda_dir)
+
+                # Apply CLIP's preprocess
+                if logger is not None:
+                    logger.info(f"Applying CLIP preprocessing...")
+
+                f_ci = clip_preprocess(I_ci).unsqueeze(0).to(device)
+                f_cs = clip_preprocess(I_cs).unsqueeze(0).to(device)
+                f_ss  = clip_preprocess(I_ss).unsqueeze(0).to(device)
+                I_s = clip_preprocess(I_s).unsqueeze(0).to(device)
+
+                with torch.no_grad():
+                    f_ci = F.normalize(clip_model.encode_image(f_ci), dim=-1)
+                    f_cs = F.normalize(clip_model.encode_image(f_cs), dim=-1)
+                    f_ss  = F.normalize(clip_model.encode_image(f_ss), dim=-1)
+                    f_s = F.normalize(clip_model.encode_image(I_s), dim=-1)
+
+                if logger is not None:
+                    logger.info(f"CLIP preprocessing done.")
+
+                #calculate style disentanglement loss
+                loss_sd = style_disentanglement_loss(f_ci, f_cs, f_ss, f_s, lambda_l1, lambda_dir)
                 optimizer.zero_grad()
                 loss_sd.backward()
                 optimizer.step()
@@ -262,6 +308,9 @@ if __name__ == "__main__":
     logger.info(f"content latents sample count: {len(content_latents)}")
     logger.info(f"content latent shape: {content_latents[0].shape}")
 
+    #load clip model
+    clip_model, clip_preprocess = clip.load("ViT-B/32", device=DEVICE)
+
     #apply style diffusion fine-tuning
     model_finetuned = style_diffusion_fine_tuning(
         original_style_tensor,
@@ -269,6 +318,8 @@ if __name__ == "__main__":
         content_latents,
         model,
         diffusion,
+        clip_model,
+        clip_preprocess,
         S_REV,
         K,
         K_S,
