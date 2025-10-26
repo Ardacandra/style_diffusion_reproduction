@@ -110,21 +110,20 @@ def style_diffusion_fine_tuning(
                 logger.info(f"Starting style reconstruction iteration {i+1}...")
 
             x_t = style_latent.clone().to(device)
-            for s in reversed(range(1, s_rev)):
-                if logger is not None:
-                    logger.info(f"DDIM step: {s} -> {s-1}")
 
-                t = torch.full((x_t.size(0),), s, device=device, dtype=torch.long)
-
+            ddim_timesteps_backward = np.linspace(0, diffusion.num_timesteps-1, s_rev, dtype=int)
+            ddim_timesteps_backward = ddim_timesteps_backward[::-1]
+            for step in range(len(ddim_timesteps_backward)-1):
+                
                 # Use DDIM deterministic reverse diffusion
-                ddim_timesteps_backward = np.linspace(s-1, s, 2, dtype=int)
-                ddim_timesteps_backward = ddim_timesteps_backward[::-1]
+                if logger is not None:
+                    logger.info(f"DDIM step: {ddim_timesteps_backward[step]} -> {ddim_timesteps_backward[step+1]}")
 
                 x_t_prev = ddim_deterministic(
                     x_start=x_t,
                     model=model_finetuned,
                     diffusion=diffusion,
-                    ddim_timesteps=ddim_timesteps_backward,
+                    ddim_timesteps=[ddim_timesteps_backward[step], ddim_timesteps_backward[step+1]],
                     device=device,
                     requires_grad=True,
                 )
@@ -144,21 +143,20 @@ def style_diffusion_fine_tuning(
                 logger.info(f"Starting style disentanglement for sample number {i+1}...")
 
             x_t = content_latents[i].clone().to(device)
-            for s in reversed(range(1, s_rev)):
-                if logger is not None:
-                    logger.info(f"DDIM step: {s} -> {s-1}")
-            
-                t = torch.full((x_t.size(0),), s, device=device, dtype=torch.long)
+
+            ddim_timesteps_backward = np.linspace(0, diffusion.num_timesteps-1, s_rev, dtype=int)
+            ddim_timesteps_backward = ddim_timesteps_backward[::-1]
+            for step in range(len(ddim_timesteps_backward)-1):
 
                 # Use DDIM deterministic reverse diffusion
-                ddim_timesteps_backward = np.linspace(s-1, s, 2, dtype=int)
-                ddim_timesteps_backward = ddim_timesteps_backward[::-1]
+                if logger is not None:
+                    logger.info(f"DDIM step: {ddim_timesteps_backward[step]} -> {ddim_timesteps_backward[step+1]}")
 
                 x_t_prev = ddim_deterministic(
                     x_start=x_t,
                     model=model_finetuned,
                     diffusion=diffusion,
-                    ddim_timesteps=ddim_timesteps_backward,
+                    ddim_timesteps=[ddim_timesteps_backward[step], ddim_timesteps_backward[step+1]],
                     device=device,
                     requires_grad=True,
                 )
@@ -185,8 +183,8 @@ if __name__ == "__main__":
     DEVICE = "cpu"
     CHECKPOINT_PATH = "models/checkpoints/256x256_diffusion_uncond.pt"
     IMAGE_SIZE = 256
-    # S_FOR = 40
-    # S_REV = 6
+    S_FOR = 40
+    S_REV = 6
 
     # K = 5
     # K_S = 50
@@ -194,9 +192,6 @@ if __name__ == "__main__":
     # LR_MULTIPLIER = 1.2
     # LAMBDA_L1 = 10
     # LAMBDA_DIR = 1
-
-    S_FOR = 30
-    S_REV = 4
 
     K = 1
     K_S = 1
