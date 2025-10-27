@@ -204,6 +204,11 @@ def main(config_path):
         #generate stylized image
         logger.info("Generating stylized images using fine-tuned model...")
 
+        # model_finetuned, diffusion = create_model_and_diffusion(**options)
+        # state_dict = torch.load(os.path.join(run_output_path, "finetuned_style_model.pt"), map_location=cfg['device'], weights_only=True)
+        # model_finetuned.load_state_dict(state_dict)
+        # model_finetuned.to(cfg['device'])
+
         stylized_output_path = os.path.join(run_output_path, "content_stylized")
         os.makedirs(stylized_output_path, exist_ok=True)
         for i in range(len(content_latents)):
@@ -215,7 +220,7 @@ def main(config_path):
             stylized_image = x0_est.squeeze(0).permute(1, 2, 0).cpu().numpy()
             stylized_image = ((stylized_image + 1) / 2).clip(0, 1)  # scale back to [0,1]
             stylized_image = (stylized_image * 255).astype(np.uint8)
-            Image.fromarray(stylized_image).save(os.path.join(stylized_output_path, f"{content_latent_files[i].split('.')[0]}.jpg"))
+            Image.fromarray(stylized_image).save(os.path.join(stylized_output_path, f"{content_latents_files[i].split('.')[0]}.jpg"))
         
         logger.info("Stylized images generated.")
 
