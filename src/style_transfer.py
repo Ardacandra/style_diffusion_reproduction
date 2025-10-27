@@ -284,7 +284,7 @@ def style_diffusion_fine_tuning(
                     "f_ss": f_ss,
                     "f_s":  f_s,
                 }
-                for name, t in tensors_before.items():
+                for name, t in tensors_after.items():
                     summarize_tensor(name, t, logger)
 
                 if logger is not None:
