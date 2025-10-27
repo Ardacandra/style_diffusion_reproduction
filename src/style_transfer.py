@@ -23,27 +23,25 @@ _CLIP_STD  = torch.tensor([0.26862954, 0.26130258, 0.27577711])
 def tensor_to_clip_input_tensor(img: torch.Tensor, size: int = 224, device: str = "cuda"):
     """
     Convert a torch tensor (latent or image) into a CLIP-friendly tensor **without** leaving torch.
-    Expects img shape [B, C, H, W] or [C, H, W]. Values can be in [-1,1] or [0,1].
-    Returns float tensor of shape [B, 3, size, size] on `device`.
-    Differentiable (no cpu/numpy/PIL).
+    Handles arbitrary dynamic ranges by adaptive normalization.
+    Returns a differentiable tensor of shape [B, 3, size, size] on `device`.
     """
     if img.dim() == 3:
         img = img.unsqueeze(0)  # [1, C, H, W]
 
     img = img.to(dtype=torch.float32, device=device)
 
-    # If in [-1,1], map to [0,1]
-    if img.min() < 0.0:
-        img = (img.clamp(-1, 1) + 1.0) / 2.0
-    else:
-        img = img.clamp(0.0, 1.0)
+    # Adaptive rescale: handle any range safely
+    img_min = img.amin(dim=(1,2,3), keepdim=True)
+    img_max = img.amax(dim=(1,2,3), keepdim=True)
+    img = (img - img_min) / (img_max - img_min + 1e-8)  # [0,1]
+    img = img.clamp(0, 1)
 
     # If single-channel, repeat to 3 channels
     if img.shape[1] == 1:
         img = img.repeat(1, 3, 1, 1)
     elif img.shape[1] == 4:
-        # if RGBA, drop alpha
-        img = img[:, :3, :, :]
+        img = img[:, :3, :, :]  # drop alpha if RGBA
 
     # Resize to CLIP input size using bilinear interpolation
     img = F.interpolate(img, size=(size, size), mode="bilinear", align_corners=False)
@@ -53,7 +51,7 @@ def tensor_to_clip_input_tensor(img: torch.Tensor, size: int = 224, device: str 
     std = _CLIP_STD.to(device).view(1, 3, 1, 1)
     img = (img - mean) / std
 
-    return img  # differentiable tensor on device
+    return img
 
 def style_reconstruction_loss(I_ss: torch.Tensor, I_s: torch.Tensor) -> torch.Tensor:
     """
