@@ -286,8 +286,7 @@ def style_diffusion_fine_tuning(
 
 if __name__ == "__main__":
     #Example usage
-    # DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-    DEVICE = "cpu"
+    DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
     CHECKPOINT_PATH = "models/checkpoints/256x256_diffusion_uncond.pt"
     IMAGE_SIZE = 256
     S_FOR = 40
@@ -300,7 +299,7 @@ if __name__ == "__main__":
     LAMBDA_L1 = 10
     LAMBDA_DIR = 1
 
-    N_CONTENT_SAMPLE = 5
+    N_CONTENT_SAMPLE = 50
 
     CONTENT_LATENTS_PATH = "output/test_run/content_latents/"
     STYLE_ORIGINAL_PATH = "data/style/van_gogh/000.jpg"
@@ -394,5 +393,7 @@ if __name__ == "__main__":
 
     stylized_image = x0_est.squeeze(0).permute(1, 2, 0).cpu().numpy()
     stylized_image = ((stylized_image + 1) / 2).clip(0, 1)  # scale back to [0,1]
-    plt.imshow(stylized_image)
-    plt.savefig(os.path.join(OUTPUT_DIR, OUTPUT_PREFIX + "sample_stylized_image.png"), bbox_inches='tight', dpi=300)
+    stylized_image = (stylized_image * 255).astype(np.uint8)
+    # plt.imshow(stylized_image)
+    # plt.savefig(os.path.join(OUTPUT_DIR, OUTPUT_PREFIX + "sample_stylized_image.png"), bbox_inches='tight', dpi=300)
+    Image.fromarray(stylized_image).save(os.path.join(OUTPUT_DIR, OUTPUT_PREFIX + "sample_stylized_image.jpg"))

@@ -14,6 +14,7 @@ from guided_diffusion.script_util import create_model_and_diffusion, model_and_d
 
 from src.helper import *
 from src.style_removal import *
+from src.style_transfer import *
 
 def main(config_path):
     # loading configurations
@@ -153,6 +154,70 @@ def main(config_path):
             style_latent = ddim_deterministic(style_tensor, model, diffusion, ddim_timesteps_forward, cfg['device'], logger=logger)
             torch.save(style_latent, os.path.join(style_latent_output_path, "style.pt"))
             logger.info(f"Style image processed and saved to {style_latent_output_path}")        
+
+        logger.info("Starting style transfer fine-tuning...")
+
+        model, diffusion = create_model_and_diffusion(**options)
+        state_dict = torch.load(cfg['pretrained_model_path'], map_location=cfg['device'], weights_only=True)
+        model.load_state_dict(state_dict)
+        model.to(cfg['device'])
+
+        #get style original and latent tensores
+        original_style = Image.open(cfg['style_path'])
+        original_style_tensor = prepare_image_as_tensor(original_style, image_size=cfg['image_size'], device=cfg['device'])
+
+        style_latent = torch.load(os.path.join(run_output_path, "style_latents/style.pt"), map_location=cfg['device'], weights_only=True)
+
+        #get content latents
+        content_latents_path = os.path.join(run_output_path, "content_latents/")
+        content_latents_files = [f for f in os.listdir(content_latents_path) if f.lower().endswith(('.pt'))]
+        content_latents = []
+        for file in content_latents_files:
+            content_latents.append(
+                torch.load(os.path.join(content_latents_path, file), map_location=cfg['device'], weights_only=True)
+            )
+
+        #load clip model
+        clip_model, clip_preprocess = clip.load("ViT-B/32", device=cfg['device'])
+
+        #apply style diffusion fine-tuning
+        model_finetuned = style_diffusion_fine_tuning(
+            original_style_tensor,
+            style_latent,
+            content_latents,
+            model,
+            diffusion,
+            clip_model,
+            clip_preprocess,
+            cfg['style_transfer_s_rev'],
+            cfg['k'],
+            cfg['k_s'],
+            cfg['lr'],
+            cfg['lr_multiplier'],
+            cfg['lambda_l1'],
+            cfg['lambda_dir'],
+            cfg['device'],
+            logger=logger,
+        )
+        torch.save(model_finetuned.state_dict(), os.path.join(run_output_path, f"finetuned_style_model.pt"))
+
+        #generate stylized image
+        logger.info("Generating stylized images using fine-tuned model...")
+
+        stylized_output_path = os.path.join(run_output_path, "content_stylized")
+        os.makedirs(stylized_output_path, exist_ok=True)
+        for i in range(len(content_latents)):
+            x_t = content_latents[i].clone().to(cfg['device'])
+            ddim_timesteps_backward = np.linspace(0, cfg['style_transfer_s_for']-1, cfg['style_transfer_s_rev'], dtype=int)
+            ddim_timesteps_backward = ddim_timesteps_backward[::-1]
+            x0_est = ddim_deterministic(x_t, model_finetuned, diffusion, ddim_timesteps_backward, device=cfg['device'])
+
+            stylized_image = x0_est.squeeze(0).permute(1, 2, 0).cpu().numpy()
+            stylized_image = ((stylized_image + 1) / 2).clip(0, 1)  # scale back to [0,1]
+            stylized_image = (stylized_image * 255).astype(np.uint8)
+            Image.fromarray(stylized_image).save(os.path.join(stylized_output_path, f"{content_latent_files[i].split('.')[0]}.jpg"))
+        
+        logger.info("Stylized images generated.")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
