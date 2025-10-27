@@ -20,3 +20,12 @@ def prepare_image_as_tensor(img_pil, image_size=256, device='cuda'):
     ])
     x = transform(img_pil).unsqueeze(0).to(device)  # shape [1,3,H,W]
     return x
+
+def summarize_tensor(name, t: torch.Tensor, logger):
+    """Print basic stats for a tensor."""
+    logger.info(f"--- {name} ---")
+    logger.info(f"Shape: {tuple(t.shape)}")
+    logger.info(f"Min:  {t.min().item():.4f}")
+    logger.info(f"Max:  {t.max().item():.4f}")
+    logger.info(f"Mean: {t.mean().item():.4f}")
+    logger.info(f"Std:  {t.std().item():.4f}")

@@ -256,6 +256,16 @@ def style_diffusion_fine_tuning(
                 if logger is not None:
                     logger.info(f"Applying CLIP preprocessing...")
                 
+                #log tensor shapes and stats for debugging
+                tensors_before = {
+                    "I_ci": I_ci,
+                    "I_cs": I_cs,
+                    "I_ss": I_ss,
+                    "I_s":  I_s,
+                }
+                for name, t in tensors_before.items():
+                    summarize_tensor(name, t, logger)
+                
                 #detach tensors that does not flow gradients to the finetuned model
                 f_ci = tensor_to_clip_input_tensor(I_ci, size=224, device=device).detach()
                 f_cs = tensor_to_clip_input_tensor(I_cs, size=224, device=device)
@@ -266,6 +276,16 @@ def style_diffusion_fine_tuning(
                 f_cs = clip_model.encode_image(f_cs)
                 f_ss  = clip_model.encode_image(f_ss)
                 f_s = clip_model.encode_image(f_s)
+
+                #log tensor shapes and stats for debugging
+                tensors_after = {
+                    "f_ci": f_ci,
+                    "f_cs": f_cs,
+                    "f_ss": f_ss,
+                    "f_s":  f_s,
+                }
+                for name, t in tensors_before.items():
+                    summarize_tensor(name, t, logger)
 
                 if logger is not None:
                     logger.info(f"CLIP preprocessing done.")
@@ -291,6 +311,7 @@ if __name__ == "__main__":
     IMAGE_SIZE = 256
     S_FOR = 40
     S_REV = 6
+    # S_REV = 20
 
     K = 5
     K_S = 50
