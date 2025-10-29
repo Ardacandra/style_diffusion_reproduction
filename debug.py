@@ -65,9 +65,6 @@ if __name__ == "__main__":
     model.load_state_dict(state_dict)
     model.eval().to(DEVICE)
 
-    #load CLIP model
-    clip_model, clip_preprocess = clip.load("ViT-B/32", device=DEVICE)
-
     #checking sample content image
     content_image = Image.open(CONTENT_IMAGE_PATH).convert('RGB')
     content_image.save(os.path.join(OUTPUT_DIR, OUTPUT_PREFIX + "content_image.jpg"))
@@ -103,10 +100,10 @@ if __name__ == "__main__":
     ddim_timesteps_backward = ddim_timesteps_backward[::-1]
     content_x0_est_s40 = ddim_deterministic(content_x_t, model, diffusion, ddim_timesteps_backward, DEVICE, logger=logger)
     summarize_tensor("content_x0_est_s40", content_x0_est_s40, logger)
-    content_x0_est_s40 = content_x0_est_s40.squeeze(0).permute(1, 2, 0).cpu().numpy()
-    content_x0_est_s40 = ((content_x0_est_s40 + 1) / 2).clip(0, 1)  # scale back to [0,1]
-    content_x0_est_s40 = (content_x0_est_s40 * 255).astype(np.uint8)
-    Image.fromarray(content_x0_est_s40).save(os.path.join(OUTPUT_DIR, OUTPUT_PREFIX + "content_image_after_reverse_diffusion_40_steps.jpg"))
+    content_x0_est_s40_image = content_x0_est_s40.squeeze(0).permute(1, 2, 0).cpu().numpy()
+    content_x0_est_s40_image = ((content_x0_est_s40_image + 1) / 2).clip(0, 1)  # scale back to [0,1]
+    content_x0_est_s40_image = (content_x0_est_s40_image * 255).astype(np.uint8)
+    Image.fromarray(content_x0_est_s40_image).save(os.path.join(OUTPUT_DIR, OUTPUT_PREFIX + "content_image_after_reverse_diffusion_40_steps.jpg"))
 
     #reverse diffusion with 6 steps
     s_rev = 6
@@ -114,10 +111,10 @@ if __name__ == "__main__":
     ddim_timesteps_backward = ddim_timesteps_backward[::-1]
     content_x0_est_s6 = ddim_deterministic(content_x_t, model, diffusion, ddim_timesteps_backward, DEVICE, logger=logger)
     summarize_tensor("content_x0_est_s6", content_x0_est_s6, logger)
-    content_x0_est_s6 = content_x0_est_s6.squeeze(0).permute(1, 2, 0).cpu().numpy()
-    content_x0_est_s6 = ((content_x0_est_s6 + 1) / 2).clip(0, 1)  # scale back to [0,1]
-    content_x0_est_s6 = (content_x0_est_s6 * 255).astype(np.uint8)
-    Image.fromarray(content_x0_est_s6).save(os.path.join(OUTPUT_DIR, OUTPUT_PREFIX + "content_image_after_reverse_diffusion_6_steps.jpg"))
+    content_x0_est_s6_image = content_x0_est_s6.squeeze(0).permute(1, 2, 0).cpu().numpy()
+    content_x0_est_s6_image = ((content_x0_est_s6_image + 1) / 2).clip(0, 1)  # scale back to [0,1]
+    content_x0_est_s6_image = (content_x0_est_s6_image * 255).astype(np.uint8)
+    Image.fromarray(content_x0_est_s6_image).save(os.path.join(OUTPUT_DIR, OUTPUT_PREFIX + "content_image_after_reverse_diffusion_6_steps.jpg"))
 
     #checking sample style image
     style_image = Image.open(STYLE_IMAGE_PATH).convert('RGB')
@@ -154,10 +151,10 @@ if __name__ == "__main__":
     ddim_timesteps_backward = ddim_timesteps_backward[::-1]
     style_x0_est_s40 = ddim_deterministic(style_x_t, model, diffusion, ddim_timesteps_backward, DEVICE, logger=logger)
     summarize_tensor("style_x0_est_s40", style_x0_est_s40, logger)
-    style_x0_est_s40 = style_x0_est_s40.squeeze(0).permute(1, 2, 0).cpu().numpy()
-    style_x0_est_s40 = ((style_x0_est_s40 + 1) / 2).clip(0, 1)  # scale back to [0,1]
-    style_x0_est_s40 = (style_x0_est_s40 * 255).astype(np.uint8)
-    Image.fromarray(style_x0_est_s40).save(os.path.join(OUTPUT_DIR, OUTPUT_PREFIX + "style_image_after_reverse_diffusion_40_steps.jpg"))
+    style_x0_est_s40_image = style_x0_est_s40.squeeze(0).permute(1, 2, 0).cpu().numpy()
+    style_x0_est_s40_image = ((style_x0_est_s40_image + 1) / 2).clip(0, 1)  # scale back to [0,1]
+    style_x0_est_s40_image = (style_x0_est_s40_image * 255).astype(np.uint8)
+    Image.fromarray(style_x0_est_s40_image).save(os.path.join(OUTPUT_DIR, OUTPUT_PREFIX + "style_image_after_reverse_diffusion_40_steps.jpg"))
 
     #reverse diffusion with 6 steps
     s_rev = 6
@@ -165,7 +162,92 @@ if __name__ == "__main__":
     ddim_timesteps_backward = ddim_timesteps_backward[::-1]
     style_x0_est_s6 = ddim_deterministic(style_x_t, model, diffusion, ddim_timesteps_backward, DEVICE, logger=logger)
     summarize_tensor("style_x0_est_s6", style_x0_est_s6, logger)
-    style_x0_est_s6 = style_x0_est_s6.squeeze(0).permute(1, 2, 0).cpu().numpy()
-    style_x0_est_s6 = ((style_x0_est_s6 + 1) / 2).clip(0, 1)  # scale back to [0,1]
-    style_x0_est_s6 = (style_x0_est_s6 * 255).astype(np.uint8)
-    Image.fromarray(style_x0_est_s6).save(os.path.join(OUTPUT_DIR, OUTPUT_PREFIX + "style_image_after_reverse_diffusion_6_steps.jpg"))
+    style_x0_est_s6_image = style_x0_est_s6.squeeze(0).permute(1, 2, 0).cpu().numpy()
+    style_x0_est_s6_image = ((style_x0_est_s6_image + 1) / 2).clip(0, 1)  # scale back to [0,1]
+    style_x0_est_s6_image = (style_x0_est_s6_image * 255).astype(np.uint8)
+    Image.fromarray(style_x0_est_s6_image).save(os.path.join(OUTPUT_DIR, OUTPUT_PREFIX + "style_image_after_reverse_diffusion_6_steps.jpg"))
+
+    #============================================================================================
+    #DEBUGGING STYLE TRANSFER LOGIC
+    #============================================================================================
+    S_REV = 20
+    K = 5
+    K_S = 50
+    LR = 0.00004
+    LR_MULTIPLIER = 1.2
+    LAMBDA_L1 = 10
+    LAMBDA_DIR = 1
+
+    #load CLIP model
+    clip_model, clip_preprocess = clip.load("ViT-B/32", device=DEVICE)
+    #freeze CLIP model weights
+    clip_model.eval()
+    for p in clip_model.parameters():
+        p.requires_grad = False
+
+    #initialize fine-tuned model
+    model_finetuned, diffusion = create_model_and_diffusion(**options)
+    state_dict = torch.load(CHECKPOINT_PATH, map_location=DEVICE, weights_only=True)
+    model_finetuned.load_state_dict(state_dict)
+    model_finetuned.to(DEVICE)
+    optimizer = torch.optim.Adam(model_finetuned.parameters(), lr=LR)
+    lambda_lr = lambda epoch: LR_MULTIPLIER ** epoch
+    scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lambda_lr)
+
+    #define variables needed for the style transfer
+    original_style_tensor = style_tensor.clone().to(DEVICE)
+    style_latent = style_x0_est_s40.clone().to(DEVICE)
+    content_latent = content_x_t.clone().to(DEVICE)
+
+    #training loop
+    for iter in range(K):
+        logger.info(f"Starting fine-tuning iteration {iter+1}...")
+
+        #initialize style reference I_s
+        I_s = style_tensor.detach().to(DEVICE)
+
+        #optimize the style reconstruction loss
+        for i in range(K_S):
+            logger.info(f"Starting style reconstruction iteration {i+1}...")
+
+            x_t = style_latent.clone().to(DEVICE)
+
+            ddim_timesteps_backward = np.linspace(0, diffusion.num_timesteps-1, S_REV, dtype=int)
+            ddim_timesteps_backward = ddim_timesteps_backward[::-1]
+
+            for step in range(len(ddim_timesteps_backward)-1):
+                
+                # Use DDIM deterministic reverse diffusion
+                logger.info(f"Style reconstruction DDIM step: {ddim_timesteps_backward[step]} -> {ddim_timesteps_backward[step+1]}")
+
+                x_t_prev = ddim_deterministic(
+                    x_start=x_t,
+                    model=model_finetuned,
+                    diffusion=diffusion,
+                    ddim_timesteps=[ddim_timesteps_backward[step], ddim_timesteps_backward[step+1]],
+                    device=DEVICE,
+                    requires_grad=True,
+                )
+
+                #style reconstruction loss evaluation
+                I_ss = x_t_prev
+                loss_sr = style_reconstruction_loss(I_ss, I_s)
+
+                optimizer.zero_grad()
+                loss_sr.backward()
+                optimizer.step()
+
+                x_t = x_t_prev.detach()  
+
+            scheduler.step()      
+
+    #test reverse diffusion of fine-tuned model
+    ddim_timesteps_backward = np.linspace(0, S_FOR - 1, S_REV, dtype=int)
+    # ddim_timesteps_backward = np.linspace(0, S_FOR - 1, S_FOR, dtype=int)
+    ddim_timesteps_backward = ddim_timesteps_backward[::-1]
+    model_finetuned_output = ddim_deterministic(content_latent, model_finetuned, diffusion, ddim_timesteps_backward, DEVICE, logger=logger)
+    summarize_tensor("model_finetuned_output", model_finetuned_output, logger)
+    model_finetuned_output_image = model_finetuned_output.squeeze(0).permute(1, 2, 0).cpu().numpy()
+    model_finetuned_output_image = ((model_finetuned_output_image + 1) / 2).clip(0, 1)  # scale back to [0,1]
+    model_finetuned_output_image = (model_finetuned_output_image * 255).astype(np.uint8)
+    Image.fromarray(model_finetuned_output_image).save(os.path.join(OUTPUT_DIR, OUTPUT_PREFIX + "model_finetuned_output.jpg"))  
