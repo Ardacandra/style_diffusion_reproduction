@@ -172,7 +172,8 @@ if __name__ == "__main__":
     #============================================================================================
     S_REV = 20
     K = 5
-    K_S = 50
+    # K_S = 50
+    K_S = 5
     LR = 0.00004
     LR_MULTIPLIER = 1.2
     LAMBDA_L1 = 10
@@ -202,6 +203,7 @@ if __name__ == "__main__":
     #training loop
     for iter in range(K):
         logger.info(f"Starting fine-tuning iteration {iter+1}...")
+        logger.info(f"Learning rate: {optimizer.param_groups[0]['lr']}")
 
         #initialize style reference I_s
         I_s = style_tensor.detach().to(DEVICE)
@@ -239,7 +241,7 @@ if __name__ == "__main__":
 
                 x_t = x_t_prev.detach()  
 
-            scheduler.step()      
+        scheduler.step()      
 
     #test reverse diffusion of fine-tuned model
     ddim_timesteps_backward = np.linspace(0, S_FOR - 1, S_REV, dtype=int)
