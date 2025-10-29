@@ -173,7 +173,7 @@ if __name__ == "__main__":
     S_REV = 20
     K = 5
     # K_S = 50
-    K_S = 5
+    K_S = 10
     LR = 0.00004
     LR_MULTIPLIER = 1.2
     LAMBDA_L1 = 10
@@ -233,15 +233,128 @@ if __name__ == "__main__":
 
                 #style reconstruction loss evaluation
                 I_ss = x_t_prev
+                summarize_tensor("I_ss", I_ss, logger)
+                summarize_tensor("I_s", I_s, logger)
                 loss_sr = style_reconstruction_loss(I_ss, I_s)
+                logger.info(f"Style reconstruction loss: {loss_sr:.5f}")
 
                 optimizer.zero_grad()
                 loss_sr.backward()
                 optimizer.step()
 
-                x_t = x_t_prev.detach()  
+                x_t = x_t_prev.detach()
 
-        scheduler.step()      
+        #initialize style reconstruction reference I_ss
+        x_t_style = style_latent.clone().to(DEVICE)
+
+        ddim_timesteps_backward = np.linspace(0, diffusion.num_timesteps-1, S_REV, dtype=int)
+        ddim_timesteps_backward = ddim_timesteps_backward[::-1]
+
+        with torch.no_grad():
+            for step in range(len(ddim_timesteps_backward)-1):
+                logger.info(f"Precomputing I_ss: DDIM step {ddim_timesteps_backward[step]} -> {ddim_timesteps_backward[step+1]}")
+
+                x_t_style = ddim_deterministic(
+                    x_start=x_t_style,
+                    model=model_finetuned,
+                    diffusion=diffusion,
+                    ddim_timesteps=[ddim_timesteps_backward[step], ddim_timesteps_backward[step+1]],
+                    device=DEVICE,
+                    requires_grad=False,
+                )
+        I_ss = x_t_style.detach()
+        summarize_tensor("I_ss", I_ss, logger)
+
+        #optimize the style disentanglement loss
+        # for i in range(len(content_latents)):
+        for i in range(1):
+            logger.info(f"Starting style disentanglement for sample number {i+1}...")
+
+            # x_t = content_latents[i].clone().to(device)
+            x_t = content_latent.clone().to(DEVICE)
+
+            ddim_timesteps_backward = np.linspace(0, diffusion.num_timesteps-1, S_REV, dtype=int)
+            ddim_timesteps_backward = ddim_timesteps_backward[::-1]
+
+            for step in range(len(ddim_timesteps_backward)-1):
+
+                # Use DDIM deterministic reverse diffusion
+                if logger is not None:
+                    logger.info(f"Style disentanglement DDIM step: {ddim_timesteps_backward[step]} -> {ddim_timesteps_backward[step+1]}")
+
+                x_t_prev = ddim_deterministic(
+                    x_start=x_t,
+                    model=model_finetuned,
+                    diffusion=diffusion,
+                    ddim_timesteps=[ddim_timesteps_backward[step], ddim_timesteps_backward[step+1]],
+                    device=DEVICE,
+                    requires_grad=True,
+                )
+                
+                #style disentanglement loss evaluation
+                # I_ci = content_latents[i].detach()
+                I_ci = content_latent.detach()
+                I_cs = x_t_prev
+
+                # Apply CLIP's preprocess
+                logger.info(f"Applying CLIP preprocessing...")
+
+                # #log tensor shapes and stats for debugging
+                # tensors_before = {
+                #     "I_ci": I_ci,
+                #     "I_cs": I_cs,
+                #     "I_ss": I_ss,
+                #     "I_s":  I_s,
+                # }
+                # for name, t in tensors_before.items():
+                #     logger.info("Tensor stats before CLIP preprocessing:")
+                #     summarize_tensor(name, t, logger)
+                
+                #detach tensors that does not flow gradients to the finetuned model
+                f_ci = tensor_to_clip_input_tensor(I_ci, size=224, device=DEVICE).detach()
+                f_cs = tensor_to_clip_input_tensor(I_cs, size=224, device=DEVICE)
+                f_ss = tensor_to_clip_input_tensor(I_ss, size=224, device=DEVICE).detach()
+                f_s  = tensor_to_clip_input_tensor(I_s, size=224, device=DEVICE).detach()
+
+                # #log tensor shapes and stats for debugging
+                # tensors_mid = {
+                #     "f_ci": f_ci,
+                #     "f_cs": f_cs,
+                #     "f_ss": f_ss,
+                #     "f_s":  f_s,
+                # }
+                # for name, t in tensors_mid.items():
+                #     logger.info("Tensor stats after CLIP preprocessing:")
+                #     summarize_tensor(name, t, logger)
+
+                f_ci = clip_model.encode_image(f_ci)
+                f_cs = clip_model.encode_image(f_cs)
+                f_ss  = clip_model.encode_image(f_ss)
+                f_s = clip_model.encode_image(f_s)
+
+                # #log tensor shapes and stats for debugging
+                # tensors_after = {
+                #     "f_ci": f_ci,
+                #     "f_cs": f_cs,
+                #     "f_ss": f_ss,
+                #     "f_s":  f_s,
+                # }
+                # for name, t in tensors_after.items():
+                #     logger.info("Tensor stats after CLIP encoding:")
+                #     summarize_tensor(name, t, logger)
+
+                logger.info(f"CLIP preprocessing done.")
+
+                #calculate style disentanglement loss
+                loss_sd = style_disentanglement_loss(f_ci, f_cs, f_ss, f_s, LAMBDA_L1, LAMBDA_DIR)
+                logger.info(f"Style disentanglement loss: {loss_sd:.5f}")
+                optimizer.zero_grad()
+                loss_sd.backward()
+                optimizer.step()
+
+                x_t = x_t_prev.detach()
+
+        scheduler.step()
 
     #test reverse diffusion of fine-tuned model
     ddim_timesteps_backward = np.linspace(0, S_FOR - 1, S_REV, dtype=int)
