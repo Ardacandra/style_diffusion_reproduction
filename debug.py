@@ -20,10 +20,22 @@ if __name__ == "__main__":
     DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
     CHECKPOINT_PATH = "models/checkpoints/256x256_diffusion_uncond.pt"
     IMAGE_SIZE = 256
-    S_FOR = 40
-    # S_REV = 40
-    # S_REV = 20
-    # S_REV = 6
+
+    T_REMOV = 601
+    T_TRANS = 301
+
+    S_FOR_REMOV = 40
+    S_REV_REMOV = 40
+
+    S_FOR_TRANS = 40
+    S_REV_TRANS = 6
+
+    K = 5
+    K_S = 50
+    LR = 0.00004
+    LR_MULTIPLIER = 1.2
+    LAMBDA_L1 = 10
+    LAMBDA_DIR = 1
 
     CONTENT_IMAGE_PATH = "data/content/0045.jpg"
     CONTENT_LATENT_PATH = "output/test_run/content_latents/0045.pt"
@@ -48,7 +60,7 @@ if __name__ == "__main__":
     options.update({
         'attention_resolutions': '32,16,8',
         'class_cond': False,
-        'diffusion_steps': S_FOR,
+        'diffusion_steps': T_REMOV,
         'image_size': IMAGE_SIZE,
         'learn_sigma': True,
         'noise_schedule': 'linear',
@@ -64,57 +76,6 @@ if __name__ == "__main__":
     state_dict = torch.load(CHECKPOINT_PATH, map_location=DEVICE, weights_only=True)
     model.load_state_dict(state_dict)
     model.eval().to(DEVICE)
-
-    #checking sample content image
-    content_image = Image.open(CONTENT_IMAGE_PATH).convert('RGB')
-    content_image.save(os.path.join(OUTPUT_DIR, OUTPUT_PREFIX + "content_image.jpg"))
-
-    #checking tensor of sample content image
-    content_tensor = prepare_image_as_tensor(content_image, image_size=IMAGE_SIZE, device=DEVICE)
-    summarize_tensor("content_tensor", content_tensor, logger)
-
-    #checking image recreated from content tensor
-    content_image_rec = content_tensor.squeeze(0).permute(1, 2, 0).cpu().numpy()
-    content_image_rec = ((content_image_rec + 1) / 2).clip(0, 1)  # scale back to [0,1]
-    content_image_rec = (content_image_rec * 255).astype(np.uint8)
-    Image.fromarray(content_image_rec).save(os.path.join(OUTPUT_DIR, OUTPUT_PREFIX + "content_image_from_tensor.jpg"))
-
-    #apply color removal
-    content_image_luma = rgb_to_luma_601(content_image)
-    Image.fromarray(content_image_luma).save(os.path.join(OUTPUT_DIR, OUTPUT_PREFIX + "content_image_after_color_removal.jpg"))
-
-    #forward diffusion to obtain latents
-    content_x0 = prepare_image_as_tensor(Image.fromarray(content_image_luma), image_size=IMAGE_SIZE, device=DEVICE)
-    summarize_tensor("content_x0", content_tensor, logger)
-    ddim_timesteps_forward = np.linspace(0, diffusion.num_timesteps - 1, S_FOR, dtype=int)
-    content_x_t = ddim_deterministic(content_x0, model, diffusion, ddim_timesteps_forward, DEVICE, logger=logger)
-    summarize_tensor("content_x_t", content_x_t, logger)
-    content_x_t_image = content_x_t.squeeze(0).permute(1, 2, 0).cpu().numpy()
-    content_x_t_image = ((content_x_t_image + 1) / 2).clip(0, 1)  # scale back to [0,1]
-    content_x_t_image = (content_x_t_image * 255).astype(np.uint8)
-    Image.fromarray(content_x_t_image).save(os.path.join(OUTPUT_DIR, OUTPUT_PREFIX + "content_image_after_forward_diffusion.jpg"))
-
-    #reverse diffusion with 40 steps
-    s_rev = 40
-    ddim_timesteps_backward = np.linspace(0, S_FOR - 1, s_rev, dtype=int)
-    ddim_timesteps_backward = ddim_timesteps_backward[::-1]
-    content_x0_est_s40 = ddim_deterministic(content_x_t, model, diffusion, ddim_timesteps_backward, DEVICE, logger=logger)
-    summarize_tensor("content_x0_est_s40", content_x0_est_s40, logger)
-    content_x0_est_s40_image = content_x0_est_s40.squeeze(0).permute(1, 2, 0).cpu().numpy()
-    content_x0_est_s40_image = ((content_x0_est_s40_image + 1) / 2).clip(0, 1)  # scale back to [0,1]
-    content_x0_est_s40_image = (content_x0_est_s40_image * 255).astype(np.uint8)
-    Image.fromarray(content_x0_est_s40_image).save(os.path.join(OUTPUT_DIR, OUTPUT_PREFIX + "content_image_after_reverse_diffusion_40_steps.jpg"))
-
-    #reverse diffusion with 6 steps
-    s_rev = 6
-    ddim_timesteps_backward = np.linspace(0, S_FOR - 1, s_rev, dtype=int)
-    ddim_timesteps_backward = ddim_timesteps_backward[::-1]
-    content_x0_est_s6 = ddim_deterministic(content_x_t, model, diffusion, ddim_timesteps_backward, DEVICE, logger=logger)
-    summarize_tensor("content_x0_est_s6", content_x0_est_s6, logger)
-    content_x0_est_s6_image = content_x0_est_s6.squeeze(0).permute(1, 2, 0).cpu().numpy()
-    content_x0_est_s6_image = ((content_x0_est_s6_image + 1) / 2).clip(0, 1)  # scale back to [0,1]
-    content_x0_est_s6_image = (content_x0_est_s6_image * 255).astype(np.uint8)
-    Image.fromarray(content_x0_est_s6_image).save(os.path.join(OUTPUT_DIR, OUTPUT_PREFIX + "content_image_after_reverse_diffusion_6_steps.jpg"))
 
     #checking sample style image
     style_image = Image.open(STYLE_IMAGE_PATH).convert('RGB')
@@ -137,7 +98,7 @@ if __name__ == "__main__":
     #forward diffusion to obtain latents
     style_x0 = prepare_image_as_tensor(Image.fromarray(style_image_luma), image_size=IMAGE_SIZE, device=DEVICE)
     summarize_tensor("style_x0", style_tensor, logger)
-    ddim_timesteps_forward = np.linspace(0, diffusion.num_timesteps - 1, S_FOR, dtype=int)
+    ddim_timesteps_forward = np.linspace(0, diffusion.num_timesteps - 1, S_FOR_REMOV, dtype=int)
     style_x_t = ddim_deterministic(style_x0, model, diffusion, ddim_timesteps_forward, DEVICE, logger=logger)
     summarize_tensor("style_x_t", style_x_t, logger)
     style_x_t_image = style_x_t.squeeze(0).permute(1, 2, 0).cpu().numpy()
@@ -145,40 +106,58 @@ if __name__ == "__main__":
     style_x_t_image = (style_x_t_image * 255).astype(np.uint8)
     Image.fromarray(style_x_t_image).save(os.path.join(OUTPUT_DIR, OUTPUT_PREFIX + "style_image_after_forward_diffusion.jpg"))
 
-    #reverse diffusion with 40 steps
-    s_rev = 40
-    ddim_timesteps_backward = np.linspace(0, S_FOR - 1, s_rev, dtype=int)
+    #reverse diffusion to reconstruct style image
+    ddim_timesteps_backward = np.linspace(0, diffusion.num_timesteps - 1, S_REV_REMOV, dtype=int)
     ddim_timesteps_backward = ddim_timesteps_backward[::-1]
-    style_x0_est_s40 = ddim_deterministic(style_x_t, model, diffusion, ddim_timesteps_backward, DEVICE, logger=logger)
-    summarize_tensor("style_x0_est_s40", style_x0_est_s40, logger)
-    style_x0_est_s40_image = style_x0_est_s40.squeeze(0).permute(1, 2, 0).cpu().numpy()
-    style_x0_est_s40_image = ((style_x0_est_s40_image + 1) / 2).clip(0, 1)  # scale back to [0,1]
-    style_x0_est_s40_image = (style_x0_est_s40_image * 255).astype(np.uint8)
-    Image.fromarray(style_x0_est_s40_image).save(os.path.join(OUTPUT_DIR, OUTPUT_PREFIX + "style_image_after_reverse_diffusion_40_steps.jpg"))
+    style_x0_est = ddim_deterministic(style_x_t, model, diffusion, ddim_timesteps_backward, DEVICE, logger=logger)
+    summarize_tensor("style_x0_est", style_x0_est, logger)
+    style_x0_est_image = style_x0_est.squeeze(0).permute(1, 2, 0).cpu().numpy()
+    style_x0_est_image = ((style_x0_est_image + 1) / 2).clip(0, 1)  # scale back to [0,1]
+    style_x0_est_image = (style_x0_est_image * 255).astype(np.uint8)
+    Image.fromarray(style_x0_est_image).save(os.path.join(OUTPUT_DIR, OUTPUT_PREFIX + "style_image_after_reverse_diffusion.jpg"))
 
-    #reverse diffusion with 6 steps
-    s_rev = 6
-    ddim_timesteps_backward = np.linspace(0, S_FOR - 1, s_rev, dtype=int)
+    #checking sample content image
+    content_image = Image.open(CONTENT_IMAGE_PATH).convert('RGB')
+    content_image.save(os.path.join(OUTPUT_DIR, OUTPUT_PREFIX + "content_image.jpg"))
+
+    #checking tensor of sample content image
+    content_tensor = prepare_image_as_tensor(content_image, image_size=IMAGE_SIZE, device=DEVICE)
+    summarize_tensor("content_tensor", content_tensor, logger)
+
+    #checking image recreated from content tensor
+    content_image_rec = content_tensor.squeeze(0).permute(1, 2, 0).cpu().numpy()
+    content_image_rec = ((content_image_rec + 1) / 2).clip(0, 1)  # scale back to [0,1]
+    content_image_rec = (content_image_rec * 255).astype(np.uint8)
+    Image.fromarray(content_image_rec).save(os.path.join(OUTPUT_DIR, OUTPUT_PREFIX + "content_image_from_tensor.jpg"))
+
+    #apply color removal
+    content_image_luma = rgb_to_luma_601(content_image)
+    Image.fromarray(content_image_luma).save(os.path.join(OUTPUT_DIR, OUTPUT_PREFIX + "content_image_after_color_removal.jpg"))
+
+    #forward diffusion to obtain latents
+    content_x0 = prepare_image_as_tensor(Image.fromarray(content_image_luma), image_size=IMAGE_SIZE, device=DEVICE)
+    summarize_tensor("content_x0", content_tensor, logger)
+    ddim_timesteps_forward = np.linspace(0, diffusion.num_timesteps - 1, S_FOR_REMOV, dtype=int)
+    content_x_t = ddim_deterministic(content_x0, model, diffusion, ddim_timesteps_forward, DEVICE, logger=logger)
+    summarize_tensor("content_x_t", content_x_t, logger)
+    content_x_t_image = content_x_t.squeeze(0).permute(1, 2, 0).cpu().numpy()
+    content_x_t_image = ((content_x_t_image + 1) / 2).clip(0, 1)  # scale back to [0,1]
+    content_x_t_image = (content_x_t_image * 255).astype(np.uint8)
+    Image.fromarray(content_x_t_image).save(os.path.join(OUTPUT_DIR, OUTPUT_PREFIX + "content_image_after_forward_diffusion.jpg"))
+
+    #reverse diffusion to reconstruct content image
+    ddim_timesteps_backward = np.linspace(0, diffusion.num_timesteps - 1, S_REV_REMOV, dtype=int)
     ddim_timesteps_backward = ddim_timesteps_backward[::-1]
-    style_x0_est_s6 = ddim_deterministic(style_x_t, model, diffusion, ddim_timesteps_backward, DEVICE, logger=logger)
-    summarize_tensor("style_x0_est_s6", style_x0_est_s6, logger)
-    style_x0_est_s6_image = style_x0_est_s6.squeeze(0).permute(1, 2, 0).cpu().numpy()
-    style_x0_est_s6_image = ((style_x0_est_s6_image + 1) / 2).clip(0, 1)  # scale back to [0,1]
-    style_x0_est_s6_image = (style_x0_est_s6_image * 255).astype(np.uint8)
-    Image.fromarray(style_x0_est_s6_image).save(os.path.join(OUTPUT_DIR, OUTPUT_PREFIX + "style_image_after_reverse_diffusion_6_steps.jpg"))
+    content_x0_est = ddim_deterministic(content_x_t, model, diffusion, ddim_timesteps_backward, DEVICE, logger=logger)
+    summarize_tensor("content_x0_est", content_x0_est, logger)
+    content_x0_est_image = content_x0_est.squeeze(0).permute(1, 2, 0).cpu().numpy()
+    content_x0_est_image = ((content_x0_est_image + 1) / 2).clip(0, 1)  # scale back to [0,1]
+    content_x0_est_image = (content_x0_est_image * 255).astype(np.uint8)
+    Image.fromarray(content_x0_est_image).save(os.path.join(OUTPUT_DIR, OUTPUT_PREFIX + "content_image_after_reverse_diffusion.jpg"))
 
     #============================================================================================
     #DEBUGGING STYLE TRANSFER LOGIC
     #============================================================================================
-    S_REV = 20
-    K = 5
-    # K_S = 50
-    K_S = 10
-    LR = 0.00004
-    LR_MULTIPLIER = 1.2
-    LAMBDA_L1 = 10
-    LAMBDA_DIR = 1
-
     #load CLIP model
     clip_model, clip_preprocess = clip.load("ViT-B/32", device=DEVICE)
     #freeze CLIP model weights
@@ -187,6 +166,21 @@ if __name__ == "__main__":
         p.requires_grad = False
 
     #initialize fine-tuned model
+    options = model_and_diffusion_defaults()
+    options.update({
+        'attention_resolutions': '32,16,8',
+        'class_cond': False,
+        'diffusion_steps': T_TRANS,
+        'image_size': IMAGE_SIZE,
+        'learn_sigma': True,
+        'noise_schedule': 'linear',
+        'num_channels': 256,
+        'num_head_channels': 64,
+        'num_res_blocks': 2,
+        'resblock_updown': True,
+        'use_fp16': False,
+        'use_scale_shift_norm': True,
+    })
     model_finetuned, diffusion = create_model_and_diffusion(**options)
     state_dict = torch.load(CHECKPOINT_PATH, map_location=DEVICE, weights_only=True)
     model_finetuned.load_state_dict(state_dict)
@@ -197,8 +191,10 @@ if __name__ == "__main__":
 
     #define variables needed for the style transfer
     original_style_tensor = style_tensor.clone().to(DEVICE)
-    style_latent = style_x0_est_s40.clone().to(DEVICE)
-    content_latent = content_x_t.clone().to(DEVICE)
+
+    ddim_timesteps_forward = np.linspace(0, diffusion.num_timesteps - 1, S_FOR_TRANS, dtype=int)
+    style_latent = ddim_deterministic(style_x0_est, model_finetuned, diffusion, ddim_timesteps_forward, DEVICE, logger=logger)
+    content_latent = ddim_deterministic(content_x0, model_finetuned, diffusion, ddim_timesteps_forward, DEVICE, logger=logger)
 
     #training loop
     for iter in range(K):
@@ -214,7 +210,7 @@ if __name__ == "__main__":
 
             x_t = style_latent.clone().to(DEVICE)
 
-            ddim_timesteps_backward = np.linspace(0, diffusion.num_timesteps-1, S_REV, dtype=int)
+            ddim_timesteps_backward = np.linspace(0, diffusion.num_timesteps-1, S_REV_TRANS, dtype=int)
             ddim_timesteps_backward = ddim_timesteps_backward[::-1]
 
             for step in range(len(ddim_timesteps_backward)-1):
@@ -247,7 +243,7 @@ if __name__ == "__main__":
         #initialize style reconstruction reference I_ss
         x_t_style = style_latent.clone().to(DEVICE)
 
-        ddim_timesteps_backward = np.linspace(0, diffusion.num_timesteps-1, S_REV, dtype=int)
+        ddim_timesteps_backward = np.linspace(0, diffusion.num_timesteps-1, S_REV_TRANS, dtype=int)
         ddim_timesteps_backward = ddim_timesteps_backward[::-1]
 
         with torch.no_grad():
@@ -273,7 +269,7 @@ if __name__ == "__main__":
             # x_t = content_latents[i].clone().to(device)
             x_t = content_latent.clone().to(DEVICE)
 
-            ddim_timesteps_backward = np.linspace(0, diffusion.num_timesteps-1, S_REV, dtype=int)
+            ddim_timesteps_backward = np.linspace(0, diffusion.num_timesteps-1, S_REV_TRANS, dtype=int)
             ddim_timesteps_backward = ddim_timesteps_backward[::-1]
 
             for step in range(len(ddim_timesteps_backward)-1):
@@ -357,8 +353,7 @@ if __name__ == "__main__":
         scheduler.step()
 
     #test reverse diffusion of fine-tuned model
-    ddim_timesteps_backward = np.linspace(0, S_FOR - 1, S_REV, dtype=int)
-    # ddim_timesteps_backward = np.linspace(0, S_FOR - 1, S_FOR, dtype=int)
+    ddim_timesteps_backward = np.linspace(0, diffusion.num_timesteps-1, S_REV_TRANS, dtype=int)
     ddim_timesteps_backward = ddim_timesteps_backward[::-1]
     model_finetuned_output = ddim_deterministic(content_latent, model_finetuned, diffusion, ddim_timesteps_backward, DEVICE, logger=logger)
     summarize_tensor("model_finetuned_output", model_finetuned_output, logger)
