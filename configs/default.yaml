@@ -15,12 +15,17 @@ run_mode: "style_removal" #options: "style_removal", "style_transfer"
 
 device: "cuda" #options: "cpu", "cuda"
 image_size: 256
+
+#style removal specific parameters
+t_remov: 601
 style_removal_s_for: 40
 style_removal_s_rev: 40
 
 #style transfer specific parameters
 content_processed_path: "./output/test_run/content_processed" #path containing content images after style removal
 style_processed_path: "./output/test_run/style_processed/style.jpg" #path containing style image after style removal
+
+t_trans: 301
 style_transfer_s_for: 40
 style_transfer_s_rev: 6
 k: 5 #epochs

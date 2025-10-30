@@ -254,17 +254,17 @@ def style_diffusion_fine_tuning(
                 if logger is not None:
                     logger.info(f"Applying CLIP preprocessing...")
                 
-                if logger is not None:
-                    #log tensor shapes and stats for debugging
-                    tensors_before = {
-                        "I_ci": I_ci,
-                        "I_cs": I_cs,
-                        "I_ss": I_ss,
-                        "I_s":  I_s,
-                    }
-                    for name, t in tensors_before.items():
-                        logger.info("Tensor stats before CLIP preprocessing:")
-                        summarize_tensor(name, t, logger)
+                # if logger is not None:
+                #     #log tensor shapes and stats for debugging
+                #     tensors_before = {
+                #         "I_ci": I_ci,
+                #         "I_cs": I_cs,
+                #         "I_ss": I_ss,
+                #         "I_s":  I_s,
+                #     }
+                #     for name, t in tensors_before.items():
+                #         logger.info("Tensor stats before CLIP preprocessing:")
+                #         summarize_tensor(name, t, logger)
                 
                 #detach tensors that does not flow gradients to the finetuned model
                 f_ci = tensor_to_clip_input_tensor(I_ci, size=224, device=device).detach()
@@ -272,34 +272,34 @@ def style_diffusion_fine_tuning(
                 f_ss = tensor_to_clip_input_tensor(I_ss, size=224, device=device).detach()
                 f_s  = tensor_to_clip_input_tensor(I_s, size=224, device=device).detach()
 
-                if logger is not None:
-                    #log tensor shapes and stats for debugging
-                    tensors_mid = {
-                        "f_ci": f_ci,
-                        "f_cs": f_cs,
-                        "f_ss": f_ss,
-                        "f_s":  f_s,
-                    }
-                    for name, t in tensors_mid.items():
-                        logger.info("Tensor stats after CLIP preprocessing:")
-                        summarize_tensor(name, t, logger)
+                # if logger is not None:
+                #     #log tensor shapes and stats for debugging
+                #     tensors_mid = {
+                #         "f_ci": f_ci,
+                #         "f_cs": f_cs,
+                #         "f_ss": f_ss,
+                #         "f_s":  f_s,
+                #     }
+                #     for name, t in tensors_mid.items():
+                #         logger.info("Tensor stats after CLIP preprocessing:")
+                #         summarize_tensor(name, t, logger)
 
                 f_ci = clip_model.encode_image(f_ci)
                 f_cs = clip_model.encode_image(f_cs)
                 f_ss  = clip_model.encode_image(f_ss)
                 f_s = clip_model.encode_image(f_s)
 
-                if logger is not None:
-                    #log tensor shapes and stats for debugging
-                    tensors_after = {
-                        "f_ci": f_ci,
-                        "f_cs": f_cs,
-                        "f_ss": f_ss,
-                        "f_s":  f_s,
-                    }
-                    for name, t in tensors_after.items():
-                        logger.info("Tensor stats after CLIP encoding:")
-                        summarize_tensor(name, t, logger)
+                # if logger is not None:
+                #     #log tensor shapes and stats for debugging
+                #     tensors_after = {
+                #         "f_ci": f_ci,
+                #         "f_cs": f_cs,
+                #         "f_ss": f_ss,
+                #         "f_s":  f_s,
+                #     }
+                #     for name, t in tensors_after.items():
+                #         logger.info("Tensor stats after CLIP encoding:")
+                #         summarize_tensor(name, t, logger)
 
                 if logger is not None:
                     logger.info(f"CLIP preprocessing done.")
@@ -323,9 +323,9 @@ if __name__ == "__main__":
     DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
     CHECKPOINT_PATH = "models/checkpoints/256x256_diffusion_uncond.pt"
     IMAGE_SIZE = 256
+    T_TRANS = 301
     S_FOR = 40
     S_REV = 6
-    # S_REV = 20
 
     K = 5
     K_S = 50
@@ -358,7 +358,7 @@ if __name__ == "__main__":
     options.update({
         'attention_resolutions': '32,16,8',
         'class_cond': False,
-        'diffusion_steps': S_FOR,
+        'diffusion_steps': T_TRANS,
         'image_size': IMAGE_SIZE,
         'learn_sigma': True,
         'noise_schedule': 'linear',
@@ -422,7 +422,7 @@ if __name__ == "__main__":
 
     #generate sample stylized image
     x_t = content_latents[0].clone().to(DEVICE)
-    ddim_timesteps_backward = np.linspace(0, S_FOR-1, S_REV, dtype=int)
+    ddim_timesteps_backward = np.linspace(0, diffusion.num_timesteps - 1, S_REV, dtype=int)
     ddim_timesteps_backward = ddim_timesteps_backward[::-1]
     x0_est = ddim_deterministic(x_t, model_finetuned, diffusion, ddim_timesteps_backward, device=DEVICE)
 

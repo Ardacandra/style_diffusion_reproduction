@@ -81,6 +81,7 @@ if __name__ == "__main__":
     DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
     CHECKPOINT_PATH = "models/checkpoints/256x256_diffusion_uncond.pt"
     IMAGE_SIZE = 256
+    T_REMOV = 601
     S_FOR = 40
     S_REV = 40
     IMAGE_PATH = "data/style/van_gogh/"
@@ -107,7 +108,7 @@ if __name__ == "__main__":
     options.update({
         'attention_resolutions': '32,16,8',
         'class_cond': False,
-        'diffusion_steps': S_FOR,
+        'diffusion_steps': T_REMOV,
         'image_size': IMAGE_SIZE,
         'learn_sigma': True,
         'noise_schedule': 'linear',
@@ -138,7 +139,7 @@ if __name__ == "__main__":
     plt.savefig(os.path.join(OUTPUT_DIR, OUTPUT_PREFIX + "noised_image.png"), bbox_inches='tight', dpi=300)
 
     #reverse diffusion (DDIM)
-    ddim_timesteps_backward = np.linspace(0, S_FOR-1, S_REV, dtype=int)
+    ddim_timesteps_backward = np.linspace(0, diffusion.num_timesteps - 1, S_REV, dtype=int)
     ddim_timesteps_backward = ddim_timesteps_backward[::-1]
     assert ddim_timesteps_backward[-1]==0
     x0_est = ddim_deterministic(x_t, model, diffusion, ddim_timesteps_backward, device=DEVICE)

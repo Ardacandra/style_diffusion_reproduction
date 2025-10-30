@@ -40,7 +40,7 @@ def main(config_path):
         options.update({
             'attention_resolutions': '32,16,8',
             'class_cond': False,
-            'diffusion_steps': cfg['style_removal_s_for'],
+            'diffusion_steps': cfg['t_remov'],
             'image_size': cfg['image_size'],
             'learn_sigma': True,
             'noise_schedule': 'linear',
@@ -85,7 +85,7 @@ def main(config_path):
         x_t = ddim_deterministic(x0, model, diffusion, ddim_timesteps_forward, cfg['device'], logger=logger)
         
         #reverse diffusion (DDIM)
-        ddim_timesteps_backward = np.linspace(0, cfg['style_removal_s_for']-1, cfg['style_removal_s_rev'], dtype=int)
+        ddim_timesteps_backward = np.linspace(0, diffusion.num_timesteps - 1, cfg['style_removal_s_rev'], dtype=int)
         ddim_timesteps_backward = ddim_timesteps_backward[::-1]
         assert ddim_timesteps_backward[-1]==0
         x0_est = ddim_deterministic(x_t, model, diffusion, ddim_timesteps_backward, device=cfg['device'], logger=logger)
@@ -109,7 +109,7 @@ def main(config_path):
         options.update({
             'attention_resolutions': '32,16,8',
             'class_cond': False,
-            'diffusion_steps': cfg['style_transfer_s_for'],
+            'diffusion_steps': cfg['t_trans'],
             'image_size': cfg['image_size'],
             'learn_sigma': True,
             'noise_schedule': 'linear',
@@ -213,7 +213,7 @@ def main(config_path):
         os.makedirs(stylized_output_path, exist_ok=True)
         for i in range(len(content_latents)):
             x_t = content_latents[i].clone().to(cfg['device'])
-            ddim_timesteps_backward = np.linspace(0, cfg['style_transfer_s_for']-1, cfg['style_transfer_s_rev'], dtype=int)
+            ddim_timesteps_backward = np.linspace(0, diffusion.num_timesteps - 1, cfg['style_transfer_s_rev'], dtype=int)
             ddim_timesteps_backward = ddim_timesteps_backward[::-1]
             x0_est = ddim_deterministic(x_t, model_finetuned, diffusion, ddim_timesteps_backward, device=cfg['device'])
 
