@@ -21,7 +21,7 @@ if __name__ == "__main__":
     CHECKPOINT_PATH = "models/checkpoints/256x256_diffusion_uncond.pt"
     IMAGE_SIZE = 256
 
-    T_REMOV = 601
+    T_REMOV = 41
     T_TRANS = 301
 
     S_FOR_REMOV = 40

@@ -17,7 +17,7 @@ device: "cuda" #options: "cpu", "cuda"
 image_size: 256
 
 #style removal specific parameters
-t_remov: 601
+t_remov: 41
 style_removal_s_for: 40
 style_removal_s_rev: 40
 
