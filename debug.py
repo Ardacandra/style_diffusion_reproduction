@@ -21,7 +21,8 @@ if __name__ == "__main__":
     CHECKPOINT_PATH = "models/checkpoints/256x256_diffusion_uncond.pt"
     IMAGE_SIZE = 256
 
-    T_REMOV = 41
+    T_REMOV_STYLE = 41
+    T_REMOV_CONTENT = 601
     T_TRANS = 301
 
     S_FOR_REMOV = 40
@@ -60,7 +61,7 @@ if __name__ == "__main__":
     options.update({
         'attention_resolutions': '32,16,8',
         'class_cond': False,
-        'diffusion_steps': T_REMOV,
+        'diffusion_steps': T_REMOV_STYLE,
         'image_size': IMAGE_SIZE,
         'learn_sigma': True,
         'noise_schedule': 'linear',
@@ -116,6 +117,28 @@ if __name__ == "__main__":
     style_x0_est_image = (style_x0_est_image * 255).astype(np.uint8)
     Image.fromarray(style_x0_est_image).save(os.path.join(OUTPUT_DIR, OUTPUT_PREFIX + "style_image_after_reverse_diffusion.jpg"))
 
+    #load pre-trained model
+    options = model_and_diffusion_defaults()
+    options.update({
+        'attention_resolutions': '32,16,8',
+        'class_cond': False,
+        'diffusion_steps': T_REMOV_CONTENT,
+        'image_size': IMAGE_SIZE,
+        'learn_sigma': True,
+        'noise_schedule': 'linear',
+        'num_channels': 256,
+        'num_head_channels': 64,
+        'num_res_blocks': 2,
+        'resblock_updown': True,
+        'use_fp16': False,
+        'use_scale_shift_norm': True,
+    })
+
+    model, diffusion = create_model_and_diffusion(**options)
+    state_dict = torch.load(CHECKPOINT_PATH, map_location=DEVICE, weights_only=True)
+    model.load_state_dict(state_dict)
+    model.eval().to(DEVICE)    
+    
     #checking sample content image
     content_image = Image.open(CONTENT_IMAGE_PATH).convert('RGB')
     content_image.save(os.path.join(OUTPUT_DIR, OUTPUT_PREFIX + "content_image.jpg"))
@@ -194,7 +217,8 @@ if __name__ == "__main__":
 
     ddim_timesteps_forward = np.linspace(0, diffusion.num_timesteps - 1, S_FOR_TRANS, dtype=int)
     style_latent = ddim_deterministic(style_x0_est, model_finetuned, diffusion, ddim_timesteps_forward, DEVICE, logger=logger)
-    content_latent = ddim_deterministic(content_x0, model_finetuned, diffusion, ddim_timesteps_forward, DEVICE, logger=logger)
+    # content_latent = ddim_deterministic(content_x0, model_finetuned, diffusion, ddim_timesteps_forward, DEVICE, logger=logger)
+    content_latent = ddim_deterministic(content_x0_est, model_finetuned, diffusion, ddim_timesteps_forward, DEVICE, logger=logger)
 
     #training loop
     for iter in range(K):
@@ -263,8 +287,10 @@ if __name__ == "__main__":
 
         #optimize the style disentanglement loss
         # for i in range(len(content_latents)):
-        for i in range(1):
-            logger.info(f"Starting style disentanglement for sample number {i+1}...")
+        
+        #since testing with only one image, repeat step n times
+        for _ in range(5):
+            logger.info(f"Starting style disentanglement for sample number {1}...")
 
             # x_t = content_latents[i].clone().to(device)
             x_t = content_latent.clone().to(DEVICE)
