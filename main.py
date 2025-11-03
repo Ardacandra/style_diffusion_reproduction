@@ -142,22 +142,20 @@ def main(config_path):
             content_latent_output_path = os.path.join(run_output_path, "content_latents")
             os.makedirs(content_latent_output_path, exist_ok=True)
             
-            for image_file in os.listdir(cfg['content_processed_path']):
-                if image_file.lower().endswith(('.jpg', '.jpeg', '.png')):
-                    logger.info(f"Generating latent for content image: {image_file}")
-                    image = Image.open(os.path.join(cfg['content_processed_path'], image_file))
-                    image_tensor = prepare_image_as_tensor(image, image_size=cfg['image_size'], device=cfg['device'])
-                    image_latent = ddim_deterministic(image_tensor, model, diffusion, ddim_timesteps_forward, cfg['device'], logger=logger)
-                    torch.save(image_latent, os.path.join(content_latent_output_path, f"{image_file.lower().split('.')[0]}.pt"))
-                    logger.info(f"{image_file} processed and saved to {content_latent_output_path}") 
+            for content_file in os.listdir(cfg['content_processed_path']):
+                if content_file.lower().endswith(('.pt')):
+                    logger.info(f"Generating latent for content file: {content_file}")
+                    content_tensor = torch.load(os.path.join(cfg['content_processed_path'], content_file), map_location=cfg['device'], weights_only=True)
+                    content_latent = ddim_deterministic(content_tensor, model, diffusion, ddim_timesteps_forward, cfg['device'], logger=logger)
+                    torch.save(content_latent, os.path.join(content_latent_output_path, f"{content_file.lower().split('.')[0]}.pt"))
+                    logger.info(f"{content_file} processed and saved to {content_latent_output_path}")
             
             #precompute style latent
             style_latent_output_path = os.path.join(run_output_path, "style_latents")
             os.makedirs(style_latent_output_path, exist_ok=True) 
 
-            logger.info(f"Generating latent for style image: {cfg['style_processed_path']}")
-            style = Image.open(cfg['style_processed_path'])
-            style_tensor = prepare_image_as_tensor(style, image_size=cfg['image_size'], device=cfg['device'])
+            logger.info(f"Generating latent for style : {cfg['style_processed_path']}")
+            style_tensor = torch.load(cfg['style_processed_path'], map_location=cfg['device'], weights_only=True)
             style_latent = ddim_deterministic(style_tensor, model, diffusion, ddim_timesteps_forward, cfg['device'], logger=logger)
             torch.save(style_latent, os.path.join(style_latent_output_path, "style.pt"))
             logger.info(f"Style image processed and saved to {style_latent_output_path}")        
