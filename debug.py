@@ -21,13 +21,18 @@ if __name__ == "__main__":
     CHECKPOINT_PATH = "models/checkpoints/256x256_diffusion_uncond.pt"
     IMAGE_SIZE = 256
 
-    T_REMOV_STYLE = 41
-    T_REMOV_CONTENT = 601
+    T_REMOV_STYLE = 301
+    S_FOR_REMOV_STYLE = 300
+    S_REV_REMOV_STYLE = 300
+
+    # T_REMOV_CONTENT = 601
+    # S_FOR_REMOV_CONTENT = 40
+    # S_REV_REMOV_CONTENT = 40
+    T_REMOV_CONTENT = 301
+    S_FOR_REMOV_CONTENT = 300
+    S_REV_REMOV_CONTENT = 300
+
     T_TRANS = 301
-
-    S_FOR_REMOV = 40
-    S_REV_REMOV = 40
-
     S_FOR_TRANS = 40
     S_REV_TRANS = 6
 
@@ -99,7 +104,7 @@ if __name__ == "__main__":
     #forward diffusion to obtain latents
     style_x0 = prepare_image_as_tensor(Image.fromarray(style_image_luma), image_size=IMAGE_SIZE, device=DEVICE)
     summarize_tensor("style_x0", style_tensor, logger)
-    ddim_timesteps_forward = np.linspace(0, diffusion.num_timesteps - 1, S_FOR_REMOV, dtype=int)
+    ddim_timesteps_forward = np.linspace(0, diffusion.num_timesteps - 1, S_FOR_REMOV_STYLE, dtype=int)
     style_x_t = ddim_deterministic(style_x0, model, diffusion, ddim_timesteps_forward, DEVICE, logger=logger)
     summarize_tensor("style_x_t", style_x_t, logger)
     style_x_t_image = style_x_t.squeeze(0).permute(1, 2, 0).cpu().numpy()
@@ -108,7 +113,7 @@ if __name__ == "__main__":
     Image.fromarray(style_x_t_image).save(os.path.join(OUTPUT_DIR, OUTPUT_PREFIX + "style_image_after_forward_diffusion.jpg"))
 
     #reverse diffusion to reconstruct style image
-    ddim_timesteps_backward = np.linspace(0, diffusion.num_timesteps - 1, S_REV_REMOV, dtype=int)
+    ddim_timesteps_backward = np.linspace(0, diffusion.num_timesteps - 1, S_REV_REMOV_STYLE, dtype=int)
     ddim_timesteps_backward = ddim_timesteps_backward[::-1]
     style_x0_est = ddim_deterministic(style_x_t, model, diffusion, ddim_timesteps_backward, DEVICE, logger=logger)
     summarize_tensor("style_x0_est", style_x0_est, logger)
@@ -160,7 +165,7 @@ if __name__ == "__main__":
     #forward diffusion to obtain latents
     content_x0 = prepare_image_as_tensor(Image.fromarray(content_image_luma), image_size=IMAGE_SIZE, device=DEVICE)
     summarize_tensor("content_x0", content_tensor, logger)
-    ddim_timesteps_forward = np.linspace(0, diffusion.num_timesteps - 1, S_FOR_REMOV, dtype=int)
+    ddim_timesteps_forward = np.linspace(0, diffusion.num_timesteps - 1, S_FOR_REMOV_CONTENT, dtype=int)
     content_x_t = ddim_deterministic(content_x0, model, diffusion, ddim_timesteps_forward, DEVICE, logger=logger)
     summarize_tensor("content_x_t", content_x_t, logger)
     content_x_t_image = content_x_t.squeeze(0).permute(1, 2, 0).cpu().numpy()
@@ -169,7 +174,7 @@ if __name__ == "__main__":
     Image.fromarray(content_x_t_image).save(os.path.join(OUTPUT_DIR, OUTPUT_PREFIX + "content_image_after_forward_diffusion.jpg"))
 
     #reverse diffusion to reconstruct content image
-    ddim_timesteps_backward = np.linspace(0, diffusion.num_timesteps - 1, S_REV_REMOV, dtype=int)
+    ddim_timesteps_backward = np.linspace(0, diffusion.num_timesteps - 1, S_REV_REMOV_CONTENT, dtype=int)
     ddim_timesteps_backward = ddim_timesteps_backward[::-1]
     content_x0_est = ddim_deterministic(content_x_t, model, diffusion, ddim_timesteps_backward, DEVICE, logger=logger)
     summarize_tensor("content_x0_est", content_x0_est, logger)
@@ -253,8 +258,8 @@ if __name__ == "__main__":
 
                 #style reconstruction loss evaluation
                 I_ss = x_t_prev
-                summarize_tensor("I_ss", I_ss, logger)
-                summarize_tensor("I_s", I_s, logger)
+                # summarize_tensor("I_ss", I_ss, logger)
+                # summarize_tensor("I_s", I_s, logger)
                 loss_sr = style_reconstruction_loss(I_ss, I_s)
                 logger.info(f"Style reconstruction loss: {loss_sr:.5f}")
 
@@ -283,7 +288,7 @@ if __name__ == "__main__":
                     requires_grad=False,
                 )
         I_ss = x_t_style.detach()
-        summarize_tensor("I_ss", I_ss, logger)
+        # summarize_tensor("I_ss", I_ss, logger)
 
         #optimize the style disentanglement loss
         # for i in range(len(content_latents)):
@@ -378,12 +383,12 @@ if __name__ == "__main__":
 
         scheduler.step()
 
-    #test reverse diffusion of fine-tuned model
-    ddim_timesteps_backward = np.linspace(0, diffusion.num_timesteps-1, S_REV_TRANS, dtype=int)
-    ddim_timesteps_backward = ddim_timesteps_backward[::-1]
-    model_finetuned_output = ddim_deterministic(content_latent, model_finetuned, diffusion, ddim_timesteps_backward, DEVICE, logger=logger)
-    summarize_tensor("model_finetuned_output", model_finetuned_output, logger)
-    model_finetuned_output_image = model_finetuned_output.squeeze(0).permute(1, 2, 0).cpu().numpy()
-    model_finetuned_output_image = ((model_finetuned_output_image + 1) / 2).clip(0, 1)  # scale back to [0,1]
-    model_finetuned_output_image = (model_finetuned_output_image * 255).astype(np.uint8)
-    Image.fromarray(model_finetuned_output_image).save(os.path.join(OUTPUT_DIR, OUTPUT_PREFIX + "model_finetuned_output.jpg"))  
+        #test reverse diffusion of fine-tuned model
+        ddim_timesteps_backward = np.linspace(0, diffusion.num_timesteps-1, S_REV_TRANS, dtype=int)
+        ddim_timesteps_backward = ddim_timesteps_backward[::-1]
+        model_finetuned_output = ddim_deterministic(content_latent, model_finetuned, diffusion, ddim_timesteps_backward, DEVICE, logger=logger)
+        summarize_tensor("model_finetuned_output", model_finetuned_output, logger)
+        model_finetuned_output_image = model_finetuned_output.squeeze(0).permute(1, 2, 0).cpu().numpy()
+        model_finetuned_output_image = ((model_finetuned_output_image + 1) / 2).clip(0, 1)  # scale back to [0,1]
+        model_finetuned_output_image = (model_finetuned_output_image * 255).astype(np.uint8)
+        Image.fromarray(model_finetuned_output_image).save(os.path.join(OUTPUT_DIR, OUTPUT_PREFIX + f"model_finetuned_output_iter_{iter:03d}.jpg"))  

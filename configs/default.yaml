@@ -17,9 +17,9 @@ device: "cuda" #options: "cpu", "cuda"
 image_size: 256
 
 #style removal specific parameters
-t_remov: 41
-style_removal_s_for: 40
-style_removal_s_rev: 40
+t_remov: 301
+style_removal_s_for: 300
+style_removal_s_rev: 300
 
 #style transfer specific parameters
 content_processed_path: "./output/test_run/content_processed" #path containing content images after style removal

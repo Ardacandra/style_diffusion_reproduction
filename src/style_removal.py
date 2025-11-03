@@ -81,9 +81,9 @@ if __name__ == "__main__":
     DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
     CHECKPOINT_PATH = "models/checkpoints/256x256_diffusion_uncond.pt"
     IMAGE_SIZE = 256
-    T_REMOV = 41
-    S_FOR = 40
-    S_REV = 40
+    T_REMOV = 301
+    S_FOR = 300
+    S_REV = 300
     IMAGE_PATH = "data/style/van_gogh/"
     OUTPUT_DIR = "output/"
     OUTPUT_PREFIX = "style_removal__"
