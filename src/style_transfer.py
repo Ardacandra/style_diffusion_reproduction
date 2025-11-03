@@ -16,42 +16,42 @@ import clip
 from src.helper import *
 from src.style_removal import ddim_deterministic
 
-# CLIP imagenet-like normalization used by OpenAI CLIP (ViT-B/32)
-_CLIP_MEAN = torch.tensor([0.48145466, 0.4578275, 0.40821073])
-_CLIP_STD  = torch.tensor([0.26862954, 0.26130258, 0.27577711])
+# # CLIP imagenet-like normalization used by OpenAI CLIP (ViT-B/32)
+# _CLIP_MEAN = torch.tensor([0.48145466, 0.4578275, 0.40821073])
+# _CLIP_STD  = torch.tensor([0.26862954, 0.26130258, 0.27577711])
 
-def tensor_to_clip_input_tensor(img: torch.Tensor, size: int = 224, device: str = "cuda"):
-    """
-    Convert a torch tensor (latent or image) into a CLIP-friendly tensor **without** leaving torch.
-    Handles arbitrary dynamic ranges by adaptive normalization.
-    Returns a differentiable tensor of shape [B, 3, size, size] on `device`.
-    """
-    if img.dim() == 3:
-        img = img.unsqueeze(0)  # [1, C, H, W]
+# def tensor_to_clip_input_tensor(img: torch.Tensor, size: int = 224, device: str = "cuda"):
+#     """
+#     Convert a torch tensor (latent or image) into a CLIP-friendly tensor **without** leaving torch.
+#     Handles arbitrary dynamic ranges by adaptive normalization.
+#     Returns a differentiable tensor of shape [B, 3, size, size] on `device`.
+#     """
+#     if img.dim() == 3:
+#         img = img.unsqueeze(0)  # [1, C, H, W]
 
-    img = img.to(dtype=torch.float32, device=device)
+#     img = img.to(dtype=torch.float32, device=device)
 
-    # Adaptive rescale: handle any range safely
-    img_min = img.amin(dim=(1,2,3), keepdim=True)
-    img_max = img.amax(dim=(1,2,3), keepdim=True)
-    img = (img - img_min) / (img_max - img_min + 1e-8)  # [0,1]
-    img = img.clamp(0, 1)
+#     # Adaptive rescale: handle any range safely
+#     img_min = img.amin(dim=(1,2,3), keepdim=True)
+#     img_max = img.amax(dim=(1,2,3), keepdim=True)
+#     img = (img - img_min) / (img_max - img_min + 1e-8)  # [0,1]
+#     img = img.clamp(0, 1)
 
-    # If single-channel, repeat to 3 channels
-    if img.shape[1] == 1:
-        img = img.repeat(1, 3, 1, 1)
-    elif img.shape[1] == 4:
-        img = img[:, :3, :, :]  # drop alpha if RGBA
+#     # If single-channel, repeat to 3 channels
+#     if img.shape[1] == 1:
+#         img = img.repeat(1, 3, 1, 1)
+#     elif img.shape[1] == 4:
+#         img = img[:, :3, :, :]  # drop alpha if RGBA
 
-    # Resize to CLIP input size using bilinear interpolation
-    img = F.interpolate(img, size=(size, size), mode="bilinear", align_corners=False)
+#     # Resize to CLIP input size using bilinear interpolation
+#     img = F.interpolate(img, size=(size, size), mode="bilinear", align_corners=False)
 
-    # Normalize with CLIP mean/std
-    mean = _CLIP_MEAN.to(device).view(1, 3, 1, 1)
-    std = _CLIP_STD.to(device).view(1, 3, 1, 1)
-    img = (img - mean) / std
+#     # Normalize with CLIP mean/std
+#     mean = _CLIP_MEAN.to(device).view(1, 3, 1, 1)
+#     std = _CLIP_STD.to(device).view(1, 3, 1, 1)
+#     img = (img - mean) / std
 
-    return img
+#     return img
 
 def style_reconstruction_loss(I_ss: torch.Tensor, I_s: torch.Tensor) -> torch.Tensor:
     """
@@ -254,52 +254,24 @@ def style_diffusion_fine_tuning(
                 if logger is not None:
                     logger.info(f"Applying CLIP preprocessing...")
                 
-                # if logger is not None:
-                #     #log tensor shapes and stats for debugging
-                #     tensors_before = {
-                #         "I_ci": I_ci,
-                #         "I_cs": I_cs,
-                #         "I_ss": I_ss,
-                #         "I_s":  I_s,
-                #     }
-                #     for name, t in tensors_before.items():
-                #         logger.info("Tensor stats before CLIP preprocessing:")
-                #         summarize_tensor(name, t, logger)
-                
                 #detach tensors that does not flow gradients to the finetuned model
-                f_ci = tensor_to_clip_input_tensor(I_ci, size=224, device=device).detach()
-                f_cs = tensor_to_clip_input_tensor(I_cs, size=224, device=device)
-                f_ss = tensor_to_clip_input_tensor(I_ss, size=224, device=device).detach()
-                f_s  = tensor_to_clip_input_tensor(I_s, size=224, device=device).detach()
+                # f_ci = tensor_to_clip_input_tensor(I_ci, size=224, device=device).detach()
+                # f_cs = tensor_to_clip_input_tensor(I_cs, size=224, device=device)
+                # f_ss = tensor_to_clip_input_tensor(I_ss, size=224, device=device).detach()
+                # f_s  = tensor_to_clip_input_tensor(I_s, size=224, device=device).detach()
 
-                # if logger is not None:
-                #     #log tensor shapes and stats for debugging
-                #     tensors_mid = {
-                #         "f_ci": f_ci,
-                #         "f_cs": f_cs,
-                #         "f_ss": f_ss,
-                #         "f_s":  f_s,
-                #     }
-                #     for name, t in tensors_mid.items():
-                #         logger.info("Tensor stats after CLIP preprocessing:")
-                #         summarize_tensor(name, t, logger)
+                preprocess = T.Compose([T.Normalize(mean=[-1.0, -1.0, -1.0], std=[2.0, 2.0, 2.0])] + # Un-normalize from [-1.0, 1.0] to [0, 1].
+                                              clip_preprocess.transforms[:2] +   # to match CLIP input scale assumptions
+                                              clip_preprocess.transforms[4:])    # + skip convert PIL to tensor
+                f_ci = preprocess(I_ci).detach()
+                f_cs = preprocess(I_cs)
+                f_ss = preprocess(I_ss).detach()
+                f_s = preprocess(I_s).detach()
 
                 f_ci = clip_model.encode_image(f_ci)
                 f_cs = clip_model.encode_image(f_cs)
                 f_ss  = clip_model.encode_image(f_ss)
                 f_s = clip_model.encode_image(f_s)
-
-                # if logger is not None:
-                #     #log tensor shapes and stats for debugging
-                #     tensors_after = {
-                #         "f_ci": f_ci,
-                #         "f_cs": f_cs,
-                #         "f_ss": f_ss,
-                #         "f_s":  f_s,
-                #     }
-                #     for name, t in tensors_after.items():
-                #         logger.info("Tensor stats after CLIP encoding:")
-                #         summarize_tensor(name, t, logger)
 
                 if logger is not None:
                     logger.info(f"CLIP preprocessing done.")
@@ -337,6 +309,7 @@ if __name__ == "__main__":
     N_CONTENT_SAMPLE = 50
 
     CONTENT_LATENTS_PATH = "output/test_run/content_latents/"
+    SAMPLE_CONTENT_ID = 3
     STYLE_ORIGINAL_PATH = "data/style/van_gogh/000.jpg"
     STYLE_LATENT_PATH = "output/test_run/style_latents/style.pt"
 
@@ -383,7 +356,9 @@ if __name__ == "__main__":
     
     #get sample content latents
     content_latent_files = [f for f in os.listdir(CONTENT_LATENTS_PATH) if f.lower().endswith(('.pt'))]
+    content_latent_files.sort()
     sample_content_latent_files = content_latent_files[:N_CONTENT_SAMPLE]
+    logger.info(f"Sample content image filename: {sample_content_latent_files[SAMPLE_CONTENT_ID]}")
 
     content_latents = []
     for file in sample_content_latent_files:
@@ -391,10 +366,28 @@ if __name__ == "__main__":
             torch.load(os.path.join(CONTENT_LATENTS_PATH, file), map_location=DEVICE, weights_only=True)
         )
     
-    logger.info(f"original style tensor shape: {original_style_tensor.shape}")
-    logger.info(f"style latent shape: {style_latent.shape}")
-    logger.info(f"content latents sample count: {len(content_latents)}")
-    logger.info(f"content latent shape: {content_latents[0].shape}")
+    logger.info(f"Original style tensor shape: {original_style_tensor.shape}")
+    logger.info(f"Style latent shape: {style_latent.shape}")
+    logger.info(f"Content latents sample count: {len(content_latents)}")
+    logger.info(f"Content latent shape: {content_latents[SAMPLE_CONTENT_ID].shape}")
+
+    #test reverse diffusion to reconstruct style
+    ddim_timesteps_backward = np.linspace(0, diffusion.num_timesteps - 1, S_REV, dtype=int)
+    ddim_timesteps_backward = ddim_timesteps_backward[::-1]
+    style_x0_est = ddim_deterministic(style_latent, model, diffusion, ddim_timesteps_backward, DEVICE, logger=logger)
+    style_x0_est_image = style_x0_est.squeeze(0).permute(1, 2, 0).cpu().numpy()
+    style_x0_est_image = ((style_x0_est_image + 1) / 2).clip(0, 1)  # scale back to [0,1]
+    style_x0_est_image = (style_x0_est_image * 255).astype(np.uint8)
+    Image.fromarray(style_x0_est_image).save(os.path.join(OUTPUT_DIR, OUTPUT_PREFIX + "style_image_after_reverse_diffusion.jpg"))
+
+    #test reverse diffusion to reconstruct sample content
+    ddim_timesteps_backward = np.linspace(0, diffusion.num_timesteps - 1, S_REV, dtype=int)
+    ddim_timesteps_backward = ddim_timesteps_backward[::-1]
+    content_x0_est = ddim_deterministic(content_latents[SAMPLE_CONTENT_ID], model, diffusion, ddim_timesteps_backward, DEVICE, logger=logger)
+    content_x0_est_image = content_x0_est.squeeze(0).permute(1, 2, 0).cpu().numpy()
+    content_x0_est_image = ((content_x0_est_image + 1) / 2).clip(0, 1)  # scale back to [0,1]
+    content_x0_est_image = (content_x0_est_image * 255).astype(np.uint8)
+    Image.fromarray(content_x0_est_image).save(os.path.join(OUTPUT_DIR, OUTPUT_PREFIX + "content_image_after_reverse_diffusion.jpg"))
 
     #load clip model
     clip_model, clip_preprocess = clip.load("ViT-B/32", device=DEVICE)
@@ -418,17 +411,22 @@ if __name__ == "__main__":
         DEVICE,
         logger=logger,
     )
-    torch.save(model_finetuned.state_dict(), os.path.join(OUTPUT_DIR, f"{OUTPUT_PREFIX}finetuned_style_model.pt"))
+    # torch.save(model_finetuned.state_dict(), os.path.join(OUTPUT_DIR, f"{OUTPUT_PREFIX}finetuned_style_model.pt"))
 
-    #generate sample stylized image
-    x_t = content_latents[0].clone().to(DEVICE)
+    #test reverse diffusion to reconstruct style with finetuned model
     ddim_timesteps_backward = np.linspace(0, diffusion.num_timesteps - 1, S_REV, dtype=int)
     ddim_timesteps_backward = ddim_timesteps_backward[::-1]
-    x0_est = ddim_deterministic(x_t, model_finetuned, diffusion, ddim_timesteps_backward, device=DEVICE)
+    style_x0_est = ddim_deterministic(style_latent, model_finetuned, diffusion, ddim_timesteps_backward, DEVICE, logger=logger)
+    style_x0_est_image = style_x0_est.squeeze(0).permute(1, 2, 0).cpu().numpy()
+    style_x0_est_image = ((style_x0_est_image + 1) / 2).clip(0, 1)  # scale back to [0,1]
+    style_x0_est_image = (style_x0_est_image * 255).astype(np.uint8)
+    Image.fromarray(style_x0_est_image).save(os.path.join(OUTPUT_DIR, OUTPUT_PREFIX + "style_image_after_reverse_diffusion_with_finetuned_model.jpg"))
 
-    stylized_image = x0_est.squeeze(0).permute(1, 2, 0).cpu().numpy()
-    stylized_image = ((stylized_image + 1) / 2).clip(0, 1)  # scale back to [0,1]
-    stylized_image = (stylized_image * 255).astype(np.uint8)
-    # plt.imshow(stylized_image)
-    # plt.savefig(os.path.join(OUTPUT_DIR, OUTPUT_PREFIX + "sample_stylized_image.png"), bbox_inches='tight', dpi=300)
-    Image.fromarray(stylized_image).save(os.path.join(OUTPUT_DIR, OUTPUT_PREFIX + "sample_stylized_image.jpg"))
+    #test reverse diffusion to reconstruct sample_content with finetuned model
+    ddim_timesteps_backward = np.linspace(0, diffusion.num_timesteps - 1, S_REV, dtype=int)
+    ddim_timesteps_backward = ddim_timesteps_backward[::-1]
+    content_x0_est = ddim_deterministic(content_latents[SAMPLE_CONTENT_ID], model_finetuned, diffusion, ddim_timesteps_backward, DEVICE, logger=logger)
+    content_x0_est_image = content_x0_est.squeeze(0).permute(1, 2, 0).cpu().numpy()
+    content_x0_est_image = ((content_x0_est_image + 1) / 2).clip(0, 1)  # scale back to [0,1]
+    content_x0_est_image = (content_x0_est_image * 255).astype(np.uint8)
+    Image.fromarray(content_x0_est_image).save(os.path.join(OUTPUT_DIR, OUTPUT_PREFIX + "content_image_after_reverse_diffusion_with_finetuned_model.jpg"))
