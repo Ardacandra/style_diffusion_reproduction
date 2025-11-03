@@ -57,7 +57,32 @@ def main(config_path):
         model.load_state_dict(state_dict)
         model.eval().to(cfg['device'])
 
-        #for content images, apply color removal only
+        ### apply color removal and diffusion-based style removal for style images
+        logger.info(f"Processing style image: {cfg['style_path']}")
+        style_output_path = os.path.join(run_output_path, "style_processed")
+        os.makedirs(style_output_path, exist_ok=True)
+        style_image = Image.open(cfg['style_path']).convert('RGB')
+        style_image_luma = rgb_to_luma_601(style_image)       
+        #convert luma image into tensor
+        x0 = prepare_image_as_tensor(Image.fromarray(style_image_luma), image_size=cfg['image_size'], device=cfg['device'])
+        #forward diffusion
+        ddim_timesteps_forward = np.linspace(0, diffusion.num_timesteps - 1, cfg['style_removal_s_for'], dtype=int)
+        x_t = ddim_deterministic(x0, model, diffusion, ddim_timesteps_forward, cfg['device'], logger=logger)
+        #reverse diffusion (DDIM)
+        ddim_timesteps_backward = np.linspace(0, diffusion.num_timesteps - 1, cfg['style_removal_s_rev'], dtype=int)
+        ddim_timesteps_backward = ddim_timesteps_backward[::-1]
+        assert ddim_timesteps_backward[-1]==0
+        x0_est = ddim_deterministic(x_t, model, diffusion, ddim_timesteps_backward, device=cfg['device'], logger=logger)
+        #save output tensor and image
+        torch.save(x0_est, os.path.join(style_output_path, 'style.pt'))
+        logger.info(f"Style latent saved to {style_output_path}")
+        image_recon = x0_est.squeeze(0).permute(1, 2, 0).cpu().numpy()
+        image_recon = ((image_recon + 1) / 2).clip(0, 1)
+        image_recon = (image_recon * 255).astype(np.uint8)
+        Image.fromarray(image_recon).save(os.path.join(style_output_path, "style.jpg"))
+        logger.info(f"Style image processed and saved to {style_output_path}")
+
+        ###apply color removal and diffusion-based style removal for content images
         content_output_path = os.path.join(run_output_path, "content_processed")
         os.makedirs(content_output_path, exist_ok=True)
         for image_file in os.listdir(cfg['content_path']):
@@ -65,42 +90,24 @@ def main(config_path):
                 logger.info(f"Processing content image: {image_file}")
                 image = Image.open(os.path.join(cfg['content_path'], image_file)).convert('RGB')
                 image_luma = rgb_to_luma_601(image)
-                Image.fromarray(image_luma).save(os.path.join(content_output_path, image_file))
-                logger.info(f"{image_file} processed and saved to {content_output_path}")  
-
-        #for style images, apply color removal and diffusion-based style removal
-        logger.info(f"Processing style image: {cfg['style_path']}")
-        style_output_path = os.path.join(run_output_path, "style_processed")
-        os.makedirs(style_output_path, exist_ok=True)
-        style_image = Image.open(cfg['style_path']).convert('RGB')
-        style_image_luma = rgb_to_luma_601(style_image)       
-
-        #forward diffusion ODE/inversion to obtain latents
-        #convert luma image into tensor
-        x0 = prepare_image_as_tensor(Image.fromarray(style_image_luma), image_size=cfg['image_size'], device=cfg['device'])
-
-        #forward diffusion
-        t = torch.tensor([diffusion.num_timesteps - 1]).to(cfg['device'])
-        ddim_timesteps_forward = np.linspace(0, diffusion.num_timesteps - 1, cfg['style_removal_s_for'], dtype=int)
-        x_t = ddim_deterministic(x0, model, diffusion, ddim_timesteps_forward, cfg['device'], logger=logger)
-        
-        #reverse diffusion (DDIM)
-        ddim_timesteps_backward = np.linspace(0, diffusion.num_timesteps - 1, cfg['style_removal_s_rev'], dtype=int)
-        ddim_timesteps_backward = ddim_timesteps_backward[::-1]
-        assert ddim_timesteps_backward[-1]==0
-        x0_est = ddim_deterministic(x_t, model, diffusion, ddim_timesteps_backward, device=cfg['device'], logger=logger)
-        torch.save(x0_est, os.path.join(style_output_path, 'style.pt'))
-        logger.info(f"Style latent saved to {style_output_path}")
-
-        image_recon = x0_est.squeeze(0).permute(1, 2, 0).cpu().numpy()
-        image_recon = ((image_recon + 1) / 2).clip(0, 1)
-        #extract the single grayscale channel
-        gray_image = image_recon[..., 0]  # shape: (H, W)
-        #convert to uint8 and save
-        gray_image = (gray_image * 255).astype(np.uint8)
-        Image.fromarray(gray_image, mode='L').save(os.path.join(style_output_path, "style.jpg"))
-        
-        logger.info(f"Style image processed and saved to {style_output_path}")
+                #convert luma image into tensor
+                x0 = prepare_image_as_tensor(Image.fromarray(image_luma), image_size=cfg['image_size'], device=cfg['device'])
+                #forward diffusion
+                ddim_timesteps_forward = np.linspace(0, diffusion.num_timesteps - 1, cfg['style_removal_s_for'], dtype=int)
+                x_t = ddim_deterministic(x0, model, diffusion, ddim_timesteps_forward, cfg['device'], logger=logger)
+                #reverse diffusion (DDIM)
+                ddim_timesteps_backward = np.linspace(0, diffusion.num_timesteps - 1, cfg['style_removal_s_rev'], dtype=int)
+                ddim_timesteps_backward = ddim_timesteps_backward[::-1]
+                assert ddim_timesteps_backward[-1]==0
+                x0_est = ddim_deterministic(x_t, model, diffusion, ddim_timesteps_backward, device=cfg['device'], logger=logger)
+                #save output tensor and image
+                torch.save(x0_est, os.path.join(content_output_path, f"{image_file.split('.')[0]}.pt"))
+                logger.info(f"Content latent saved to {content_output_path}")
+                image_recon = x0_est.squeeze(0).permute(1, 2, 0).cpu().numpy()
+                image_recon = ((image_recon + 1) / 2).clip(0, 1)
+                image_recon = (image_recon * 255).astype(np.uint8)
+                Image.fromarray(image_recon).save(os.path.join(content_output_path, image_file))
+                logger.info(f"Style image processed and saved to {content_output_path}")
     
     if cfg['run_mode'] == 'style_transfer':
         logger.info("Starting style transfer...")
