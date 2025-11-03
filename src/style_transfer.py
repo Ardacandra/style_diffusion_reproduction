@@ -16,43 +16,6 @@ import clip
 from src.helper import *
 from src.style_removal import ddim_deterministic
 
-# # CLIP imagenet-like normalization used by OpenAI CLIP (ViT-B/32)
-# _CLIP_MEAN = torch.tensor([0.48145466, 0.4578275, 0.40821073])
-# _CLIP_STD  = torch.tensor([0.26862954, 0.26130258, 0.27577711])
-
-# def tensor_to_clip_input_tensor(img: torch.Tensor, size: int = 224, device: str = "cuda"):
-#     """
-#     Convert a torch tensor (latent or image) into a CLIP-friendly tensor **without** leaving torch.
-#     Handles arbitrary dynamic ranges by adaptive normalization.
-#     Returns a differentiable tensor of shape [B, 3, size, size] on `device`.
-#     """
-#     if img.dim() == 3:
-#         img = img.unsqueeze(0)  # [1, C, H, W]
-
-#     img = img.to(dtype=torch.float32, device=device)
-
-#     # Adaptive rescale: handle any range safely
-#     img_min = img.amin(dim=(1,2,3), keepdim=True)
-#     img_max = img.amax(dim=(1,2,3), keepdim=True)
-#     img = (img - img_min) / (img_max - img_min + 1e-8)  # [0,1]
-#     img = img.clamp(0, 1)
-
-#     # If single-channel, repeat to 3 channels
-#     if img.shape[1] == 1:
-#         img = img.repeat(1, 3, 1, 1)
-#     elif img.shape[1] == 4:
-#         img = img[:, :3, :, :]  # drop alpha if RGBA
-
-#     # Resize to CLIP input size using bilinear interpolation
-#     img = F.interpolate(img, size=(size, size), mode="bilinear", align_corners=False)
-
-#     # Normalize with CLIP mean/std
-#     mean = _CLIP_MEAN.to(device).view(1, 3, 1, 1)
-#     std = _CLIP_STD.to(device).view(1, 3, 1, 1)
-#     img = (img - mean) / std
-
-#     return img
-
 def style_reconstruction_loss(I_ss: torch.Tensor, I_s: torch.Tensor) -> torch.Tensor:
     """
     Compute the style reconstruction loss between reconstructed and reference style images.
@@ -66,15 +29,15 @@ def style_reconstruction_loss(I_ss: torch.Tensor, I_s: torch.Tensor) -> torch.Te
     """
     return F.mse_loss(I_ss, I_s)
 
-def style_disentanglement_loss(f_ci: torch.Tensor, f_cs: torch.Tensor, f_ss: torch.Tensor, f_s: torch.Tensor, lambda_l1: int, lambda_dir: int,) -> torch.Tensor:
+def style_disentanglement_loss(I_content_color: torch.Tensor, I_content_gray: torch.Tensor, I_style_color: torch.Tensor, I_style_gray: torch.Tensor, lambda_l1: int, lambda_dir: int,) -> torch.Tensor:
     """
     Compute the style disentanglement loss. All tensors has been preprocessed with CLIP for semantic feature embedding.
 
     Args:
-        f_ci (torch.Tensor): Original content image latent or embedding.
-        f_cs (torch.Tensor): Style-modified content image (decoded from diffusion model).
-        f_ss (torch.Tensor): Reconstructed style image from the style latent.
-        f_s  (torch.Tensor): Original style reference image.
+        I_content_color (torch.Tensor): CLIP embedding of the stylized (color) content image.
+        I_content_gray (torch.Tensor): CLIP embedding of the grayscale (structure-only) content image.
+        I_style_color (torch.Tensor): CLIP embedding of the reference style image in color.
+        I_style_gray (torch.Tensor): CLIP embedding of the grayscale version of the style image.
         lambda_l1 (int): Hyperparameter to weigh l1 loss.
         lambda_dir (int): Hyperparameter to weigh direction loss.
 
@@ -82,12 +45,12 @@ def style_disentanglement_loss(f_ci: torch.Tensor, f_cs: torch.Tensor, f_ss: tor
         loss (torch.Tensor): A scalar tensor representing the loss.
     """
     #L1 loss
-    d_s = f_s - f_ss
-    d_cs = f_cs - f_ci
+    d_s = I_style_color - I_style_gray
+    d_cs = I_content_color - I_content_gray
     l1_loss = F.l1_loss(d_cs, d_s)
 
     #direction loss
-    cosine_sim = F.cosine_similarity(d_cs, d_s, dim=-1).mean()
+    cosine_sim = F.cosine_similarity(d_cs, d_s)
     dir_loss = 1 - cosine_sim
 
     #combined loss
@@ -96,9 +59,11 @@ def style_disentanglement_loss(f_ci: torch.Tensor, f_cs: torch.Tensor, f_ss: tor
     return loss
 
 def style_diffusion_fine_tuning(
-    style_tensor: torch.Tensor,
+    style_color: torch.Tensor,
+    style_gray: torch.Tensor,
     style_latent: torch.Tensor,
-    content_latents: list,
+    content_gray: list,
+    content_latent: list,
     model: nn.Module,
     diffusion,
     clip_model,
@@ -122,9 +87,11 @@ def style_diffusion_fine_tuning(
         2. Style disentanglement (ensuring style transfer doesn't override content structure)
 
     Args:
-        style_tensor (torch.Tensor): The reference style image tensor.
-        style_latent (torch.Tensor): The latent representation of the style image.
-        content_latents (list[torch.Tensor]): List of latent representations of content images.
+        style_color (torch.Tensor): The reference style image tensor in color space.
+        style_gray (torch.Tensor): Grayscale version of the style image, used for disentanglement.
+        style_latent (torch.Tensor): Latent representation of the style image.
+        content_gray (list[torch.Tensor]): List of grayscale content images.
+        content_latent (list[torch.Tensor]): List of latent representations of the content images.
         model (nn.Module): The diffusion model to fine-tune.
         diffusion: A diffusion process object that provides 'alphas_cumprod'.
         clip_model: CLIP model for pre-trained projected.
@@ -163,7 +130,7 @@ def style_diffusion_fine_tuning(
             logger.info(f"Starting fine-tuning iteration {iter+1}...")
 
         #initialize style reference I_s
-        I_s = style_tensor.detach().to(device)
+        I_s = style_color.detach().to(device)
 
         #optimize the style reconstruction loss
         for i in range(k_s):
@@ -199,34 +166,13 @@ def style_diffusion_fine_tuning(
                 optimizer.step()
 
                 x_t = x_t_prev.detach()
-        
-        #initialize style reconstruction reference I_ss
-        x_t_style = style_latent.clone().to(device)
-
-        ddim_timesteps_backward = np.linspace(0, diffusion.num_timesteps-1, s_rev, dtype=int)
-        ddim_timesteps_backward = ddim_timesteps_backward[::-1]
-
-        with torch.no_grad():
-            for step in range(len(ddim_timesteps_backward)-1):
-                if logger is not None:
-                    logger.info(f"Precomputing I_ss: DDIM step {ddim_timesteps_backward[step]} -> {ddim_timesteps_backward[step+1]}")
-
-                x_t_style = ddim_deterministic(
-                    x_start=x_t_style,
-                    model=model_finetuned,
-                    diffusion=diffusion,
-                    ddim_timesteps=[ddim_timesteps_backward[step], ddim_timesteps_backward[step+1]],
-                    device=device,
-                    requires_grad=False,
-                )
-        I_ss = x_t_style.detach()
             
         #optimize the style disentanglement loss
-        for i in range(len(content_latents)):
+        for i in range(len(content_latent)):
             if logger is not None:
                 logger.info(f"Starting style disentanglement for sample number {i+1}...")
 
-            x_t = content_latents[i].clone().to(device)
+            x_t = content_latent[i].clone().to(device)
 
             ddim_timesteps_backward = np.linspace(0, diffusion.num_timesteps-1, s_rev, dtype=int)
             ddim_timesteps_backward = ddim_timesteps_backward[::-1]
@@ -247,37 +193,27 @@ def style_diffusion_fine_tuning(
                 )
                 
                 #style disentanglement loss evaluation
-                I_ci = content_latents[i].detach()
-                I_cs = x_t_prev
 
-                # Apply CLIP's preprocess
-                if logger is not None:
-                    logger.info(f"Applying CLIP preprocessing...")
-                
                 #detach tensors that does not flow gradients to the finetuned model
-                # f_ci = tensor_to_clip_input_tensor(I_ci, size=224, device=device).detach()
-                # f_cs = tensor_to_clip_input_tensor(I_cs, size=224, device=device)
-                # f_ss = tensor_to_clip_input_tensor(I_ss, size=224, device=device).detach()
-                # f_s  = tensor_to_clip_input_tensor(I_s, size=224, device=device).detach()
-
                 preprocess = T.Compose([T.Normalize(mean=[-1.0, -1.0, -1.0], std=[2.0, 2.0, 2.0])] + # Un-normalize from [-1.0, 1.0] to [0, 1].
                                               clip_preprocess.transforms[:2] +   # to match CLIP input scale assumptions
                                               clip_preprocess.transforms[4:])    # + skip convert PIL to tensor
-                f_ci = preprocess(I_ci).detach()
-                f_cs = preprocess(I_cs)
-                f_ss = preprocess(I_ss).detach()
-                f_s = preprocess(I_s).detach()
 
-                f_ci = clip_model.encode_image(f_ci)
-                f_cs = clip_model.encode_image(f_cs)
-                f_ss  = clip_model.encode_image(f_ss)
-                f_s = clip_model.encode_image(f_s)
-
-                if logger is not None:
-                    logger.info(f"CLIP preprocessing done.")
+                I_content_color = clip_model.encode_image(preprocess(x_t_prev))
+                I_content_gray = clip_model.encode_image(preprocess(content_gray[i])).detach()
+                I_style_color  = clip_model.encode_image(preprocess(style_color)).detach()
+                I_style_gray = clip_model.encode_image(preprocess(style_gray)).detach()
 
                 #calculate style disentanglement loss
-                loss_sd = style_disentanglement_loss(f_ci, f_cs, f_ss, f_s, lambda_l1, lambda_dir)
+                loss_sd = style_disentanglement_loss(
+                    I_content_color, 
+                    I_content_gray, 
+                    I_style_color, 
+                    I_style_gray, 
+                    lambda_l1, 
+                    lambda_dir
+                )
+
                 optimizer.zero_grad()
                 loss_sd.backward()
                 optimizer.step()
@@ -308,10 +244,13 @@ if __name__ == "__main__":
 
     N_CONTENT_SAMPLE = 50
 
-    CONTENT_LATENTS_PATH = "output/test_run/content_latents/"
-    SAMPLE_CONTENT_ID = 3
-    STYLE_ORIGINAL_PATH = "data/style/van_gogh/000.jpg"
+    CONTENT_GRAY_PATH = "output/test_run/content_processed/"
+    CONTENT_LATENT_PATH = "output/test_run/content_latents/"
+    STYLE_COLOR_PATH = "data/style/van_gogh/000.jpg"
+    STYLE_GRAY_PATH = "output/test_run/style_processed/style.pt"
     STYLE_LATENT_PATH = "output/test_run/style_latents/style.pt"
+
+    SAMPLE_CONTENT_ID = 3
 
     OUTPUT_DIR = "output/"
     OUTPUT_PREFIX = "style_transfer__"
@@ -348,28 +287,37 @@ if __name__ == "__main__":
     model.load_state_dict(state_dict)
     model.to(DEVICE)
 
-    #get sample style original and latent
-    original_style = Image.open(STYLE_ORIGINAL_PATH)
-    original_style_tensor = prepare_image_as_tensor(original_style, image_size=IMAGE_SIZE, device=DEVICE)
-
+    #get sample style color, gray, and latent
+    style_color = Image.open(STYLE_COLOR_PATH)
+    style_color = prepare_image_as_tensor(style_color, image_size=IMAGE_SIZE, device=DEVICE)
+    style_gray = torch.load(STYLE_GRAY_PATH, map_location=DEVICE, weights_only=True)
     style_latent = torch.load(STYLE_LATENT_PATH, map_location=DEVICE, weights_only=True)
     
-    #get sample content latents
-    content_latent_files = [f for f in os.listdir(CONTENT_LATENTS_PATH) if f.lower().endswith(('.pt'))]
-    content_latent_files.sort()
-    sample_content_latent_files = content_latent_files[:N_CONTENT_SAMPLE]
-    logger.info(f"Sample content image filename: {sample_content_latent_files[SAMPLE_CONTENT_ID]}")
+    #get sample content color, gray, and latent
+    content_filenames = [f for f in os.listdir(CONTENT_LATENT_PATH) if f.lower().endswith('.pt')]
+    content_filenames.sort()
+    sample_content_filenames = content_filenames[:N_CONTENT_SAMPLE]
+    logger.info(f"Sample content image filename: {sample_content_filenames[SAMPLE_CONTENT_ID]}")
 
-    content_latents = []
-    for file in sample_content_latent_files:
-        content_latents.append(
-            torch.load(os.path.join(CONTENT_LATENTS_PATH, file), map_location=DEVICE, weights_only=True)
+    content_gray = []
+    for file in sample_content_filenames:
+        content_gray.append(
+            torch.load(os.path.join(CONTENT_GRAY_PATH, file), map_location=DEVICE, weights_only=True)            
+        )
+
+    content_latent = []
+    for file in sample_content_filenames:
+        content_latent.append(
+            torch.load(os.path.join(CONTENT_LATENT_PATH, file), map_location=DEVICE, weights_only=True)
         )
     
-    logger.info(f"Original style tensor shape: {original_style_tensor.shape}")
-    logger.info(f"Style latent shape: {style_latent.shape}")
-    logger.info(f"Content latents sample count: {len(content_latents)}")
-    logger.info(f"Content latent shape: {content_latents[SAMPLE_CONTENT_ID].shape}")
+    logger.info(f"Style color tensor shape: {style_color.shape}")
+    logger.info(f"Style gray tensor shape: {style_gray.shape}")
+    logger.info(f"Style latent tensor shape: {style_latent.shape}")
+    logger.info(f"Content gray tensors sample count: {len(content_gray)}")
+    logger.info(f"Content gray tensor shape: {content_gray[SAMPLE_CONTENT_ID].shape}")
+    logger.info(f"Content latent tensors sample count: {len(content_latent)}")
+    logger.info(f"Content latent tensor shape: {content_latent[SAMPLE_CONTENT_ID].shape}")
 
     #test reverse diffusion to reconstruct style
     ddim_timesteps_backward = np.linspace(0, diffusion.num_timesteps - 1, S_REV, dtype=int)
@@ -383,7 +331,7 @@ if __name__ == "__main__":
     #test reverse diffusion to reconstruct sample content
     ddim_timesteps_backward = np.linspace(0, diffusion.num_timesteps - 1, S_REV, dtype=int)
     ddim_timesteps_backward = ddim_timesteps_backward[::-1]
-    content_x0_est = ddim_deterministic(content_latents[SAMPLE_CONTENT_ID], model, diffusion, ddim_timesteps_backward, DEVICE, logger=logger)
+    content_x0_est = ddim_deterministic(content_latent[SAMPLE_CONTENT_ID], model, diffusion, ddim_timesteps_backward, DEVICE, logger=logger)
     content_x0_est_image = content_x0_est.squeeze(0).permute(1, 2, 0).cpu().numpy()
     content_x0_est_image = ((content_x0_est_image + 1) / 2).clip(0, 1)  # scale back to [0,1]
     content_x0_est_image = (content_x0_est_image * 255).astype(np.uint8)
@@ -394,9 +342,11 @@ if __name__ == "__main__":
 
     #apply style diffusion fine-tuning
     model_finetuned = style_diffusion_fine_tuning(
-        original_style_tensor,
+        style_color,
+        style_gray,
         style_latent,
-        content_latents,
+        content_gray,
+        content_latent,
         model,
         diffusion,
         clip_model,
@@ -425,7 +375,7 @@ if __name__ == "__main__":
     #test reverse diffusion to reconstruct sample_content with finetuned model
     ddim_timesteps_backward = np.linspace(0, diffusion.num_timesteps - 1, S_REV, dtype=int)
     ddim_timesteps_backward = ddim_timesteps_backward[::-1]
-    content_x0_est = ddim_deterministic(content_latents[SAMPLE_CONTENT_ID], model_finetuned, diffusion, ddim_timesteps_backward, DEVICE, logger=logger)
+    content_x0_est = ddim_deterministic(content_latent[SAMPLE_CONTENT_ID], model_finetuned, diffusion, ddim_timesteps_backward, DEVICE, logger=logger)
     content_x0_est_image = content_x0_est.squeeze(0).permute(1, 2, 0).cpu().numpy()
     content_x0_est_image = ((content_x0_est_image + 1) / 2).clip(0, 1)  # scale back to [0,1]
     content_x0_est_image = (content_x0_est_image * 255).astype(np.uint8)

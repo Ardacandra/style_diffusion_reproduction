@@ -167,19 +167,26 @@ def main(config_path):
         model.load_state_dict(state_dict)
         model.to(cfg['device'])
 
-        #get style original and latent tensores
-        original_style = Image.open(cfg['style_path'])
-        original_style_tensor = prepare_image_as_tensor(original_style, image_size=cfg['image_size'], device=cfg['device'])
+        #get style color, gray, and latent
+        style_color = Image.open(cfg['style_color_path'])
+        style_color = prepare_image_as_tensor(style_color, image_size=cfg['image_size'], device=cfg['device'])
+        style_gray = torch.load(cfg['style_gray_path'], map_location=cfg['device'], weights_only=True)
+        style_latent = torch.load(cfg['style_latent_path'], map_location=cfg['device'], weights_only=True)
 
-        style_latent = torch.load(os.path.join(run_output_path, "style_latents/style.pt"), map_location=cfg['device'], weights_only=True)
+        #get content color, gray, and latent
+        content_filenames = [f for f in os.listdir(cfg['content_latent_path']) if f.lower().endswith('.pt')]
+        content_filenames.sort()
 
-        #get content latents
-        content_latents_path = os.path.join(run_output_path, "content_latents/")
-        content_latents_files = [f for f in os.listdir(content_latents_path) if f.lower().endswith(('.pt'))]
-        content_latents = []
-        for file in content_latents_files:
-            content_latents.append(
-                torch.load(os.path.join(content_latents_path, file), map_location=cfg['device'], weights_only=True)
+        content_gray = []
+        for file in content_filenames:
+            content_gray.append(
+                torch.load(os.path.join(cfg['content_gray_path'], file), map_location=cfg['device'], weights_only=True)            
+            )
+
+        content_latent = []
+        for file in content_filenames:
+            content_latent.append(
+                torch.load(os.path.join(cfg['content_latent_path'], file), map_location=cfg['device'], weights_only=True)
             )
 
         #load clip model
@@ -187,9 +194,11 @@ def main(config_path):
 
         #apply style diffusion fine-tuning
         model_finetuned = style_diffusion_fine_tuning(
-            original_style_tensor,
+            style_color,
+            style_gray,
             style_latent,
-            content_latents,
+            content_gray,
+            content_latent,
             model,
             diffusion,
             clip_model,
@@ -216,8 +225,8 @@ def main(config_path):
 
         stylized_output_path = os.path.join(run_output_path, "content_stylized")
         os.makedirs(stylized_output_path, exist_ok=True)
-        for i in range(len(content_latents)):
-            x_t = content_latents[i].clone().to(cfg['device'])
+        for i in range(len(content_latent)):
+            x_t = content_latent[i].clone().to(cfg['device'])
             ddim_timesteps_backward = np.linspace(0, diffusion.num_timesteps - 1, cfg['style_transfer_s_rev'], dtype=int)
             ddim_timesteps_backward = ddim_timesteps_backward[::-1]
             x0_est = ddim_deterministic(x_t, model_finetuned, diffusion, ddim_timesteps_backward, device=cfg['device'])
@@ -225,7 +234,7 @@ def main(config_path):
             stylized_image = x0_est.squeeze(0).permute(1, 2, 0).cpu().numpy()
             stylized_image = ((stylized_image + 1) / 2).clip(0, 1)  # scale back to [0,1]
             stylized_image = (stylized_image * 255).astype(np.uint8)
-            Image.fromarray(stylized_image).save(os.path.join(stylized_output_path, f"{content_latents_files[i].split('.')[0]}.jpg"))
+            Image.fromarray(stylized_image).save(os.path.join(stylized_output_path, f"{content_filenames[i].split('.')[0]}.jpg"))
         
         logger.info("Stylized images generated.")
 

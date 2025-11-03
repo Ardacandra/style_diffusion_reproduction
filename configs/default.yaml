@@ -22,8 +22,12 @@ style_removal_s_for: 300
 style_removal_s_rev: 300
 
 #style transfer specific parameters
-content_processed_path: "./output/test_run/content_processed" #path containing content images after style removal
-style_processed_path: "./output/test_run/style_processed/style.pt" #path containing style tensor after style removal
+#content and style image locations. these are the output of the style removal module.
+content_gray_path: "./output/test_run/content_processed/"
+content_latent_path: "./output/test_run/content_latents/"
+style_color_path: "./data/style/van_gogh/000.jpg"
+style_gray_path: "./output/test_run/style_processed/style.pt"
+style_latent_path: "./output/test_run/style_latents/style.pt"
 
 t_trans: 301
 style_transfer_s_for: 40
