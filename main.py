@@ -142,10 +142,10 @@ def main(config_path):
             content_latent_output_path = os.path.join(run_output_path, "content_latents")
             os.makedirs(content_latent_output_path, exist_ok=True)
             
-            for content_file in os.listdir(cfg['content_processed_path']):
+            for content_file in os.listdir(cfg['content_gray_path']):
                 if content_file.lower().endswith(('.pt')):
                     logger.info(f"Generating latent for content file: {content_file}")
-                    content_tensor = torch.load(os.path.join(cfg['content_processed_path'], content_file), map_location=cfg['device'], weights_only=True)
+                    content_tensor = torch.load(os.path.join(cfg['content_gray_path'], content_file), map_location=cfg['device'], weights_only=True)
                     content_latent = ddim_deterministic(content_tensor, model, diffusion, ddim_timesteps_forward, cfg['device'], logger=logger)
                     torch.save(content_latent, os.path.join(content_latent_output_path, f"{content_file.lower().split('.')[0]}.pt"))
                     logger.info(f"{content_file} processed and saved to {content_latent_output_path}")
@@ -154,8 +154,8 @@ def main(config_path):
             style_latent_output_path = os.path.join(run_output_path, "style_latents")
             os.makedirs(style_latent_output_path, exist_ok=True) 
 
-            logger.info(f"Generating latent for style : {cfg['style_processed_path']}")
-            style_tensor = torch.load(cfg['style_processed_path'], map_location=cfg['device'], weights_only=True)
+            logger.info(f"Generating latent for style : {cfg['style_gray_path']}")
+            style_tensor = torch.load(cfg['style_gray_path'], map_location=cfg['device'], weights_only=True)
             style_latent = ddim_deterministic(style_tensor, model, diffusion, ddim_timesteps_forward, cfg['device'], logger=logger)
             torch.save(style_latent, os.path.join(style_latent_output_path, "style.pt"))
             logger.info(f"Style image processed and saved to {style_latent_output_path}")        
