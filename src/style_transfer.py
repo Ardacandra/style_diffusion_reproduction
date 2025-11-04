@@ -29,7 +29,7 @@ def style_reconstruction_loss(I_ss: torch.Tensor, I_s: torch.Tensor) -> torch.Te
     """
     return F.mse_loss(I_ss, I_s)
 
-def style_disentanglement_loss(I_content_color: torch.Tensor, I_content_gray: torch.Tensor, I_style_color: torch.Tensor, I_style_gray: torch.Tensor, lambda_l1: int, lambda_dir: int,) -> torch.Tensor:
+def style_disentanglement_loss(I_content_color: torch.Tensor, I_content_gray: torch.Tensor, I_style_color: torch.Tensor, I_style_gray: torch.Tensor, lambda_l1: float, lambda_dir: float,) -> torch.Tensor:
     """
     Compute the style disentanglement loss. All tensors has been preprocessed with CLIP for semantic feature embedding.
 
@@ -38,8 +38,8 @@ def style_disentanglement_loss(I_content_color: torch.Tensor, I_content_gray: to
         I_content_gray (torch.Tensor): CLIP embedding of the grayscale (structure-only) content image.
         I_style_color (torch.Tensor): CLIP embedding of the reference style image in color.
         I_style_gray (torch.Tensor): CLIP embedding of the grayscale version of the style image.
-        lambda_l1 (int): Hyperparameter to weigh l1 loss.
-        lambda_dir (int): Hyperparameter to weigh direction loss.
+        lambda_l1 (float): Hyperparameter to weigh l1 loss.
+        lambda_dir (float): Hyperparameter to weigh direction loss.
 
     Returns:
         loss (torch.Tensor): A scalar tensor representing the loss.
@@ -73,8 +73,9 @@ def style_diffusion_fine_tuning(
     k_s: int,
     lr: float,
     lr_multiplier: float,
-    lambda_l1: int,
-    lambda_dir: int,
+    lambda_style: float,
+    lambda_l1: float,
+    lambda_dir: float,
     device: str,
     logger=None,
 ):
@@ -101,8 +102,9 @@ def style_diffusion_fine_tuning(
         k_s (int): Number of inner steps for style reconstruction loss optimization.
         lr (float): Learning rate for fine-tuning.
         lr_multiplier (float): Linear learning rate multiplier for fine-tuning.
-        lambda_l1 (int): style disentanglement loss hyperparameter to weigh l1 loss
-        lambda_dir (int): style disentanglement loss hyperparameter to weigh direction loss
+        lambda_style (float): style reconstruction loss hyperparameter to weigh style loss
+        lambda_l1 (float): style disentanglement loss hyperparameter to weigh l1 loss
+        lambda_dir (float): style disentanglement loss hyperparameter to weigh direction loss
         device (str): Device identifier, e.g., "cuda" or "cpu".
         logger (logging.logger): optional logger
     Returns:
@@ -159,7 +161,7 @@ def style_diffusion_fine_tuning(
 
                 #style reconstruction loss evaluation
                 I_ss = x_t_prev
-                loss_sr = style_reconstruction_loss(I_ss, I_s)
+                loss_sr = style_reconstruction_loss(I_ss, I_s) * lambda_style
 
                 optimizer.zero_grad()
                 loss_sr.backward()
@@ -231,7 +233,7 @@ if __name__ == "__main__":
     DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
     CHECKPOINT_PATH = "models/checkpoints/256x256_diffusion_uncond.pt"
     IMAGE_SIZE = 256
-    T_TRANS = 301
+    T_TRANS = 1000
     S_FOR = 40
     S_REV = 6
 
@@ -239,16 +241,18 @@ if __name__ == "__main__":
     K_S = 50
     LR = 0.000004
     LR_MULTIPLIER = 1.2
-    LAMBDA_L1 = 10
-    LAMBDA_DIR = 1
+    # LAMBDA_STYLE = 5
+    LAMBDA_STYLE = 2
+    LAMBDA_L1 = 0.1
+    LAMBDA_DIR = 0.1
 
     N_CONTENT_SAMPLE = 50
 
-    CONTENT_GRAY_PATH = "output/test_run/content_processed/"
-    CONTENT_LATENT_PATH = "output/test_run/content_latents/"
+    CONTENT_GRAY_PATH = "output/test_run_4/content_processed/"
+    CONTENT_LATENT_PATH = "output/test_run_4/content_latents/"
     STYLE_COLOR_PATH = "data/style/van_gogh/000.jpg"
-    STYLE_GRAY_PATH = "output/test_run/style_processed/style.pt"
-    STYLE_LATENT_PATH = "output/test_run/style_latents/style.pt"
+    STYLE_GRAY_PATH = "output/test_run_4/style_processed/style.pt"
+    STYLE_LATENT_PATH = "output/test_run_4/style_latents/style.pt"
 
     SAMPLE_CONTENT_ID = 3
 
@@ -356,6 +360,7 @@ if __name__ == "__main__":
         K_S,
         LR,
         LR_MULTIPLIER,
+        LAMBDA_STYLE,
         LAMBDA_L1,
         LAMBDA_DIR,
         DEVICE,

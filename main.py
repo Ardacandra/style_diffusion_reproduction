@@ -208,6 +208,7 @@ def main(config_path):
             cfg['k_s'],
             cfg['lr'],
             cfg['lr_multiplier'],
+            cfg['lambda_style'],
             cfg['lambda_l1'],
             cfg['lambda_dir'],
             cfg['device'],
