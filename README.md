@@ -7,7 +7,7 @@ Recreation of the Style Diffusion research paper from ICCV 2023. [Paper link](ht
 1. Clone the repository
 
 ```
-git clone https://github.com/Ardacandra/style_diffusion_reproduction.git
+git clone https://github.com/ntu-ai-group-10/style_diffusion_reproduction.git
 cd style_diffusion_reproduction
 ```
 
