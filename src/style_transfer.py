@@ -117,6 +117,8 @@ def style_diffusion_fine_tuning(
     #initialize fine-tuned model
     model_finetuned = copy.deepcopy(model).to(device)
     optimizer = torch.optim.Adam(model_finetuned.parameters(), lr=lr)
+    sr_losses = []
+    sd_losses = [] 
     #create linear scheduler
     lambda_lr = lambda epoch: lr_multiplier ** epoch
     scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lambda_lr)
@@ -162,6 +164,11 @@ def style_diffusion_fine_tuning(
                 #style reconstruction loss evaluation
                 I_ss = x_t_prev
                 loss_sr = style_reconstruction_loss(I_ss, I_s) * lambda_style
+
+                #print loss
+                if logger is not None and (step % 5 == 0):
+                    logger.info(f"Iter {iter+1} | Style Recon Step {i+1}/{k_s} | Loss SR: {loss_sr.item():.6f}")
+                sd_losses.append(loss_sd.item())
 
                 optimizer.zero_grad()
                 loss_sr.backward()
@@ -216,6 +223,11 @@ def style_diffusion_fine_tuning(
                     lambda_dir
                 )
 
+                #print loss
+                if logger is not None:
+                     logger.info(f"Iter {iter+1} | Content Sample {i+1} | Loss SD: {loss_sd.item():.6f}")
+                sr_losses.append(loss_sr.item())
+
                 optimizer.zero_grad()
                 loss_sd.backward()
                 optimizer.step()
@@ -226,6 +238,32 @@ def style_diffusion_fine_tuning(
 
     if logger is not None:
         logger.info("Style transfer fine-tuning completed.")
+
+    # Plot
+    if logger is not None:
+        logger.info("Plotting loss curves...")
+    plt.figure(figsize=(10, 5))
+    
+    # Paint Style Reconstruction Loss
+    plt.subplot(1, 2, 1)
+    plt.plot(sr_losses, label='Style Recon Loss')
+    plt.title('Style Reconstruction Loss')
+    plt.xlabel('Steps')
+    plt.ylabel('Loss')
+    plt.grid(True)
+    
+    # Paint Style Disentanglement Loss
+    plt.subplot(1, 2, 2)
+    plt.plot(sd_losses, label='Style Disentangle Loss', color='orange')
+    plt.title('Style Disentanglement Loss')
+    plt.xlabel('Steps')
+    plt.ylabel('Loss')
+    plt.grid(True)
+    
+    plt.tight_layout()
+    # save fig 
+    plt.savefig(os.path.join("output", "loss_curve.png"))
+    plt.close()
     return model_finetuned
 
 if __name__ == "__main__":
