@@ -12,6 +12,7 @@ import copy
 import logging
 from guided_diffusion.script_util import create_model_and_diffusion, model_and_diffusion_defaults
 import clip
+from datetime import datetime
 
 from src.helper import *
 from src.style_removal import ddim_deterministic
@@ -168,7 +169,8 @@ def style_diffusion_fine_tuning(
                 #print loss
                 if logger is not None and (step % 5 == 0):
                     logger.info(f"Iter {iter+1} | Style Recon Step {i+1}/{k_s} | Loss SR: {loss_sr.item():.6f}")
-                sd_losses.append(loss_sd.item())
+                sr_losses.append(loss_sr.item())
+                
 
                 optimizer.zero_grad()
                 loss_sr.backward()
@@ -226,7 +228,7 @@ def style_diffusion_fine_tuning(
                 #print loss
                 if logger is not None:
                      logger.info(f"Iter {iter+1} | Content Sample {i+1} | Loss SD: {loss_sd.item():.6f}")
-                sr_losses.append(loss_sr.item())
+                sd_losses.append(loss_sd.item())
 
                 optimizer.zero_grad()
                 loss_sd.backward()
@@ -262,7 +264,9 @@ def style_diffusion_fine_tuning(
     
     plt.tight_layout()
     # save fig 
-    plt.savefig(os.path.join("output", "loss_curve.png"))
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    save_filename = f"loss_curve_{timestamp}.png"
+    plt.savefig(os.path.join("output", save_filename))
     plt.close()
     return model_finetuned
 
