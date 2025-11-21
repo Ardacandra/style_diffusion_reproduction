@@ -12,7 +12,7 @@ data/
        ├── monet/
        └── ukiyoe/
 Usage:
-    python src/prepare_dataset.py --n_content 100 --size 256
+    python src/prepare_dataset.py --n_content 50 --size 512
 """
 
 import os, argparse, random

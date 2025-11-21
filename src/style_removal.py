@@ -79,11 +79,12 @@ def ddim_deterministic(
 if __name__ == "__main__":
     #Example usage
     DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-    CHECKPOINT_PATH = "models/checkpoints/256x256_diffusion_uncond.pt"
-    IMAGE_SIZE = 256
-    T_REMOV = 301
-    S_FOR = 300
-    S_REV = 300
+    # CHECKPOINT_PATH = "models/checkpoints/256x256_diffusion_uncond.pt"
+    CHECKPOINT_PATH = "models/checkpoints/512x512_diffusion.pt"
+    IMAGE_SIZE = 512
+    T_REMOV = 603
+    S_FOR = 6
+    S_REV = 40
     IMAGE_PATH = "data/style/van_gogh/"
     OUTPUT_DIR = "output/"
     OUTPUT_PREFIX = "style_removal__"

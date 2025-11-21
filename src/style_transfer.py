@@ -231,28 +231,29 @@ def style_diffusion_fine_tuning(
 if __name__ == "__main__":
     #Example usage
     DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-    CHECKPOINT_PATH = "models/checkpoints/256x256_diffusion_uncond.pt"
-    IMAGE_SIZE = 256
-    T_TRANS = 1000
-    S_FOR = 40
-    S_REV = 6
+    # CHECKPOINT_PATH = "models/checkpoints/256x256_diffusion_uncond.pt"
+    CHECKPOINT_PATH = "models/checkpoints/512x512_diffusion.pt"
+    IMAGE_SIZE = 512
+    T_TRANS = 601
+    S_FOR = 100
+    S_REV = 12
 
     K = 5
     K_S = 50
     LR = 0.000004
     LR_MULTIPLIER = 1.2
-    # LAMBDA_STYLE = 5
-    LAMBDA_STYLE = 2
-    LAMBDA_L1 = 0.1
-    LAMBDA_DIR = 0.1
+    LAMBDA_STYLE = 30
+    # LAMBDA_STYLE = 2
+    LAMBDA_L1 = 5
+    LAMBDA_DIR = 0.8
 
     N_CONTENT_SAMPLE = 50
 
-    CONTENT_GRAY_PATH = "output/test_run_4/content_processed/"
-    CONTENT_LATENT_PATH = "output/test_run_4/content_latents/"
+    CONTENT_GRAY_PATH = "output/test_run_7/content_processed/"
+    CONTENT_LATENT_PATH = "output/test_run_7/content_latents/"
     STYLE_COLOR_PATH = "data/style/van_gogh/000.jpg"
-    STYLE_GRAY_PATH = "output/test_run_4/style_processed/style.pt"
-    STYLE_LATENT_PATH = "output/test_run_4/style_latents/style.pt"
+    STYLE_GRAY_PATH = "output/test_run_7/style_processed/style.pt"
+    STYLE_LATENT_PATH = "output/test_run_7/style_latents/style.pt"
 
     SAMPLE_CONTENT_ID = 3
 
