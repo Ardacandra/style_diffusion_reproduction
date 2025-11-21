@@ -50,6 +50,7 @@ def main(config_path):
             'resblock_updown': True,
             'use_fp16': False,
             'use_scale_shift_norm': True,
+            'use_checkpoint': False, 
         })
 
         model, diffusion = create_model_and_diffusion(**options)
@@ -126,6 +127,7 @@ def main(config_path):
             'resblock_updown': True,
             'use_fp16': False,
             'use_scale_shift_norm': True,
+            'use_checkpoint': False,
         })
         
         if cfg['precompute_latents']:

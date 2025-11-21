@@ -13,6 +13,8 @@ import logging
 from guided_diffusion.script_util import create_model_and_diffusion, model_and_diffusion_defaults
 import clip
 from datetime import datetime
+import guided_diffusion.nn
+import guided_diffusion.unet
 
 from src.helper import *
 from src.style_removal import ddim_deterministic
@@ -115,9 +117,71 @@ def style_diffusion_fine_tuning(
     if logger is not None:
         logger.info(f"Starting style transfer fine-tuning...")
 
-    #initialize fine-tuned model
+    # Auto-Unpacking and Parameter Cleanup
+    def no_op_checkpoint(func, *args, **kwargs):
+        # The checkpoint invocation logic in guided-diffusion is usually:
+        # checkpoint(func, (x, emb), parameters, flag)
+        # So args[0] is inputs, args[1:] are dummy params for gradient calculation
+
+        if len(args) == 0:
+            return func(**kwargs)
+
+        # 1. Only take the first argument (inputs), discard all subsequent dummy params
+        inputs = args[0]
+
+        # 2. Check whether inputs is a tuple (i.e., whether it's packed)
+        # If it is a tuple, it means (x, emb) and needs to be unpacked as func(x, emb)
+        if isinstance(inputs, tuple):
+            return func(*inputs, **kwargs)
+
+        # 3. If it's not a tuple (for example, only x), just call func(x)
+        else:
+            return func(inputs, **kwargs)
+
+    # 1. Override guided_diffusion.nn
+    guided_diffusion.nn.checkpoint = no_op_checkpoint
+
+    # 2. Override guided_diffusion.unet
+    if hasattr(guided_diffusion.unet, 'checkpoint'):
+        guided_diffusion.unet.checkpoint = no_op_checkpoint
+
+    if logger is not None:
+        logger.info("WARNING: Monkey-patched guided_diffusion with AUTO-UNPACKING mode.")
+
+
+    # Initialize fine-tuned model
     model_finetuned = copy.deepcopy(model).to(device)
-    optimizer = torch.optim.Adam(model_finetuned.parameters(), lr=lr)
+
+    # Traverse all submodules of the model, forcefully set to False and print for verification
+    count_disabled = 0
+    model_finetuned.use_checkpoint = False
+
+    for name, module in model_finetuned.named_modules():
+        if hasattr(module, 'use_checkpoint'):
+            # Regardless of whether it was True or False before, set to False again
+            module.use_checkpoint = False
+            count_disabled += 1
+
+    if logger is not None:
+        logger.info(f"Force disabled 'use_checkpoint' on {count_disabled} modules/blocks.")
+
+    # 1. Freeze all parameters (no gradient computation)
+    for param in model_finetuned.parameters():
+        param.requires_grad = False
+
+    # 2. Only unfreeze layers containing 'attn' (attention) or 'norm' (normalization)
+    # 'norm' layers usually contain style statistics; training them helps with style transfer
+    trainable_params = []
+    for name, param in model_finetuned.named_parameters():
+        if 'attn' in name or 'norm' in name:
+            param.requires_grad = True
+            trainable_params.append(param)
+
+    # 3. The optimizer only optimizes these unfrozen parameters
+    optimizer = torch.optim.Adam(trainable_params, lr=lr)
+
+
+    # optimizer = torch.optim.Adam(model_finetuned.parameters(), lr=lr)
     sr_losses = []
     sd_losses = [] 
     #create linear scheduler
@@ -326,6 +390,7 @@ if __name__ == "__main__":
         'resblock_updown': True,
         'use_fp16': False,
         'use_scale_shift_norm': True,
+        'use_checkpoint': False,
     })
 
     model, diffusion = create_model_and_diffusion(**options)
