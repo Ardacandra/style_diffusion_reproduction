@@ -17,9 +17,9 @@ device: "cuda" #options: "cpu", "cuda"
 image_size: 512
 
 #style removal specific parameters
-t_remov: 1000
-style_removal_s_for: 100
-style_removal_s_rev: 100
+t_remov: 603
+style_removal_s_for: 40
+style_removal_s_rev: 6
 
 #style transfer specific parameters
 #content and style image locations. these are the output of the style removal module.
@@ -29,14 +29,14 @@ style_color_path: "./data/style/van_gogh/000.jpg"
 style_gray_path: "./output/test_run/style_processed/style.pt"
 style_latent_path: "./output/test_run/style_latents/style.pt"
 
-t_trans: 1000
+t_trans: 601
 style_transfer_s_for: 40
 style_transfer_s_rev: 6
 k: 5 #epochs
 k_s: 50 #number of repetitions for style construction loss optimization
 lr: 0.000004 #learning rate
 lr_multiplier: 1.2 #learning rate linear multiplier per epoch
-lambda_style: 5 #hyperparameter for style reconstruction loss
-lambda_l1: 0.1 #hyperparameter for style disentanglement loss
-lambda_dir: 0.1 #hyperparameter for style disentanglement loss
+lambda_style: 1 #hyperparameter for style reconstruction loss
+lambda_l1: 10 #hyperparameter for style disentanglement loss
+lambda_dir: 1 #hyperparameter for style disentanglement loss
 precompute_latents: True #set False if latents are already precomputed
