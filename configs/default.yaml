@@ -16,6 +16,11 @@ run_mode: "style_removal" #options: "style_removal", "style_transfer"
 device: "cuda" #options: "cpu", "cuda"
 image_size: 512
 
+#diffusion model parameters
+diffusion_num_timesteps: 1000
+diffusion_beta_start: 0.0001
+diffusion_beta_end: 0.02
+
 #style removal specific parameters
 t_remov: 603
 style_removal_s_for: 40
