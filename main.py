@@ -164,9 +164,10 @@ def main(config_path):
             content_gray,
             content_latent,
             model,
-            diffusion,
+            alphas_cumprod,
             clip_model,
             clip_preprocess,
+            cfg['t_trans'],
             cfg['style_transfer_s_rev'],
             cfg['k'],
             cfg['k_s'],
@@ -187,9 +188,9 @@ def main(config_path):
         os.makedirs(stylized_output_path, exist_ok=True)
         for i in range(len(content_latent)):
             x_t = content_latent[i].clone().to(cfg['device'])
-            ddim_timesteps_backward = np.linspace(0, diffusion.num_timesteps - 1, cfg['style_transfer_s_rev'], dtype=int)
+            ddim_timesteps_backward = np.linspace(0, cfg['t_trans'], cfg['style_transfer_s_rev'], dtype=int)
             ddim_timesteps_backward = ddim_timesteps_backward[::-1]
-            x0_est = ddim_deterministic(x_t, model_finetuned, diffusion, ddim_timesteps_backward, device=cfg['device'])
+            x0_est = ddim_deterministic(x_t, model_finetuned, alphas_cumprod, ddim_timesteps_backward, device=cfg['device'])
 
             stylized_image = x0_est.squeeze(0).permute(1, 2, 0).cpu().numpy()
             stylized_image = ((stylized_image + 1) / 2).clip(0, 1)  # scale back to [0,1]
