@@ -43,5 +43,5 @@ lr: 0.000004 #learning rate
 lr_multiplier: 1.2 #learning rate linear multiplier per epoch
 lambda_style: 1 #hyperparameter for style reconstruction loss
 lambda_l1: 10 #hyperparameter for style disentanglement loss
-lambda_dir: 1 #hyperparameter for style disentanglement loss
+lambda_dir: 6 #hyperparameter for style disentanglement loss
 precompute_latents: True #set False if latents are already precomputed

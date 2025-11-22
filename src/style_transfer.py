@@ -249,9 +249,9 @@ if __name__ == "__main__":
     K_S = 50
     LR = 0.000004
     LR_MULTIPLIER = 1.2
-    LAMBDA_STYLE = 50
-    LAMBDA_L1 = 5
-    LAMBDA_DIR = 1
+    LAMBDA_STYLE = 1
+    LAMBDA_L1 = 10
+    LAMBDA_DIR = 6
 
     N_CONTENT_SAMPLE = 50
 
