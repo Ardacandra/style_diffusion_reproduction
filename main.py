@@ -32,20 +32,20 @@ def main(config_path):
     logger = logging.getLogger("Main")
     logger.info(f"Run parameters: {cfg}")
 
+    model = i_DDPM("IMAGENET", cfg['image_size'])
+    init_ckpt = torch.load(cfg['pretrained_model_path'], weights_only=True)
+    model.load_state_dict(init_ckpt)
+    model.to(cfg['device'])
+
+    #get alphas_cumprod
+    alphas_cumprod = get_linear_alphas_cumprod(
+        timesteps=cfg['diffusion_num_timesteps'],
+        beta_start=cfg['diffusion_beta_start'],
+        beta_end=cfg['diffusion_beta_end']
+    )
+
     if cfg['run_mode'] == 'style_removal':
         logger.info("Starting style removal...")
-
-        model = i_DDPM("IMAGENET", cfg['image_size'])
-        init_ckpt = torch.load(cfg['pretrained_model_path'], weights_only=True)
-        model.load_state_dict(init_ckpt)
-        model.to(cfg['device'])
-
-        #get alphas_cumprod
-        alphas_cumprod = get_linear_alphas_cumprod(
-            timesteps=cfg['diffusion_num_timesteps'],
-            beta_start=cfg['diffusion_beta_start'],
-            beta_end=cfg['diffusion_beta_end']
-        )
 
         ### apply color removal and diffusion-based style removal for style images
         logger.info(f"Processing style image: {cfg['style_path']}")
@@ -101,32 +101,11 @@ def main(config_path):
     
     if cfg['run_mode'] == 'style_transfer':
         logger.info("Starting style transfer...")
-
-        options = model_and_diffusion_defaults()
-        options.update({
-            'attention_resolutions': '32,16,8',
-            'class_cond': False,
-            'diffusion_steps': cfg['t_trans'],
-            'image_size': cfg['image_size'],
-            'learn_sigma': True,
-            'noise_schedule': 'linear',
-            'num_channels': 256,
-            'num_head_channels': 64,
-            'num_res_blocks': 2,
-            'resblock_updown': True,
-            'use_fp16': False,
-            'use_scale_shift_norm': True,
-        })
         
         if cfg['precompute_latents']:
             logger.info("Precomputing latents...")
 
-            model, diffusion = create_model_and_diffusion(**options)
-            state_dict = torch.load(cfg['pretrained_model_path'], map_location=cfg['device'], weights_only=True)
-            model.load_state_dict(state_dict)
-            model.eval().to(cfg['device'])
-
-            ddim_timesteps_forward = np.linspace(0, diffusion.num_timesteps - 1, cfg['style_transfer_s_for'], dtype=int)
+            ddim_timesteps_forward = np.linspace(0, cfg['t_trans'], cfg['style_transfer_s_for'], dtype=int)
 
             #precompute content latents
             content_latent_output_path = os.path.join(run_output_path, "content_latents")
@@ -136,7 +115,7 @@ def main(config_path):
                 if content_file.lower().endswith(('.pt')):
                     logger.info(f"Generating latent for content file: {content_file}")
                     content_tensor = torch.load(os.path.join(cfg['content_gray_path'], content_file), map_location=cfg['device'], weights_only=True)
-                    content_latent = ddim_deterministic(content_tensor, model, diffusion, ddim_timesteps_forward, cfg['device'], logger=logger)
+                    content_latent = ddim_deterministic(content_tensor, model, alphas_cumprod, ddim_timesteps_forward, cfg['device'], logger=logger)
                     torch.save(content_latent, os.path.join(content_latent_output_path, f"{content_file.lower().split('.')[0]}.pt"))
                     logger.info(f"{content_file} processed and saved to {content_latent_output_path}")
             
@@ -146,16 +125,11 @@ def main(config_path):
 
             logger.info(f"Generating latent for style : {cfg['style_gray_path']}")
             style_tensor = torch.load(cfg['style_gray_path'], map_location=cfg['device'], weights_only=True)
-            style_latent = ddim_deterministic(style_tensor, model, diffusion, ddim_timesteps_forward, cfg['device'], logger=logger)
+            style_latent = ddim_deterministic(style_tensor, model, alphas_cumprod, ddim_timesteps_forward, cfg['device'], logger=logger)
             torch.save(style_latent, os.path.join(style_latent_output_path, "style.pt"))
             logger.info(f"Style image processed and saved to {style_latent_output_path}")        
 
         logger.info("Starting style transfer fine-tuning...")
-
-        model, diffusion = create_model_and_diffusion(**options)
-        state_dict = torch.load(cfg['pretrained_model_path'], map_location=cfg['device'], weights_only=True)
-        model.load_state_dict(state_dict)
-        model.to(cfg['device'])
 
         #get style color, gray, and latent
         style_color = Image.open(cfg['style_color_path'])
@@ -208,11 +182,6 @@ def main(config_path):
 
         #generate stylized image
         logger.info("Generating stylized images using fine-tuned model...")
-
-        # model_finetuned, diffusion = create_model_and_diffusion(**options)
-        # state_dict = torch.load(os.path.join(run_output_path, "finetuned_style_model.pt"), map_location=cfg['device'], weights_only=True)
-        # model_finetuned.load_state_dict(state_dict)
-        # model_finetuned.to(cfg['device'])
 
         stylized_output_path = os.path.join(run_output_path, "content_stylized")
         os.makedirs(stylized_output_path, exist_ok=True)
