@@ -210,7 +210,7 @@ __marimo__/
 data/*
 sandbox.ipynb
 guided-diffusion/
-models/*
+models/checkpoints/
 output/*
 configs/*
 

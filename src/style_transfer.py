@@ -10,11 +10,11 @@ from PIL import Image
 import matplotlib.pyplot as plt
 import copy
 import logging
-from guided_diffusion.script_util import create_model_and_diffusion, model_and_diffusion_defaults
 import clip
+from models.improved_ddpm.script_util import i_DDPM
 
-from src.helper import *
-from src.style_removal import ddim_deterministic
+from src.helper import rgb_to_luma_601, prepare_image_as_tensor
+from src.diffusion import ddim_deterministic, get_linear_alphas_cumprod
 
 def style_reconstruction_loss(I_ss: torch.Tensor, I_s: torch.Tensor) -> torch.Tensor:
     """
@@ -65,9 +65,10 @@ def style_diffusion_fine_tuning(
     content_gray: list,
     content_latent: list,
     model: nn.Module,
-    diffusion,
+    alphas_cumprod: list,
     clip_model,
     clip_preprocess,
+    t_trans: int,
     s_rev: int,
     k: int,
     k_s: int,
@@ -94,9 +95,10 @@ def style_diffusion_fine_tuning(
         content_gray (list[torch.Tensor]): List of grayscale content images.
         content_latent (list[torch.Tensor]): List of latent representations of the content images.
         model (nn.Module): The diffusion model to fine-tune.
-        diffusion: A diffusion process object that provides 'alphas_cumprod'.
+        alphas_cumprod (list[torch.Tensor]): Precomputed alpha cumprod tensor
         clip_model: CLIP model for pre-trained projected.
         clip_preprocess : CLIP preprocessing.
+        t_trans (int): Diffusion timestep for style transfer.
         s_rev (int): Number of reverse diffusion steps.
         k (int): Number of fine-tuning outer iterations.
         k_s (int): Number of inner steps for style reconstruction loss optimization.
@@ -141,7 +143,7 @@ def style_diffusion_fine_tuning(
 
             x_t = style_latent.clone().to(device)
 
-            ddim_timesteps_backward = np.linspace(0, diffusion.num_timesteps-1, s_rev, dtype=int)
+            ddim_timesteps_backward = np.linspace(0, t_trans, s_rev, dtype=int)
             ddim_timesteps_backward = ddim_timesteps_backward[::-1]
 
             for step in range(len(ddim_timesteps_backward)-1):
@@ -153,7 +155,7 @@ def style_diffusion_fine_tuning(
                 x_t_prev = ddim_deterministic(
                     x_start=x_t,
                     model=model_finetuned,
-                    diffusion=diffusion,
+                    alphas_cumprod=alphas_cumprod,
                     ddim_timesteps=[ddim_timesteps_backward[step], ddim_timesteps_backward[step+1]],
                     device=device,
                     requires_grad=True,
@@ -176,7 +178,7 @@ def style_diffusion_fine_tuning(
 
             x_t = content_latent[i].clone().to(device)
 
-            ddim_timesteps_backward = np.linspace(0, diffusion.num_timesteps-1, s_rev, dtype=int)
+            ddim_timesteps_backward = np.linspace(0, t_trans, s_rev, dtype=int)
             ddim_timesteps_backward = ddim_timesteps_backward[::-1]
 
             for step in range(len(ddim_timesteps_backward)-1):
@@ -188,7 +190,7 @@ def style_diffusion_fine_tuning(
                 x_t_prev = ddim_deterministic(
                     x_start=x_t,
                     model=model_finetuned,
-                    diffusion=diffusion,
+                    alphas_cumprod=alphas_cumprod,
                     ddim_timesteps=[ddim_timesteps_backward[step], ddim_timesteps_backward[step+1]],
                     device=device,
                     requires_grad=True,
@@ -231,9 +233,15 @@ def style_diffusion_fine_tuning(
 if __name__ == "__main__":
     #Example usage
     DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-    CHECKPOINT_PATH = "models/checkpoints/256x256_diffusion_uncond.pt"
-    IMAGE_SIZE = 256
-    T_TRANS = 1000
+    # CHECKPOINT_PATH = "models/checkpoints/256x256_diffusion_uncond.pt"
+    CHECKPOINT_PATH = "models/checkpoints/512x512_diffusion.pt"
+    IMAGE_SIZE = 512
+
+    DIFFUSION_NUM_TIMESTEPS = 1000
+    DIFFUSION_BETA_START = 0.0001
+    DIFFUSION_BETA_END = 0.02
+
+    T_TRANS = 601
     S_FOR = 40
     S_REV = 6
 
@@ -241,20 +249,19 @@ if __name__ == "__main__":
     K_S = 50
     LR = 0.000004
     LR_MULTIPLIER = 1.2
-    # LAMBDA_STYLE = 5
-    LAMBDA_STYLE = 2
-    LAMBDA_L1 = 0.1
-    LAMBDA_DIR = 0.1
+    LAMBDA_STYLE = 1
+    LAMBDA_L1 = 10
+    LAMBDA_DIR = 6
 
     N_CONTENT_SAMPLE = 50
 
-    CONTENT_GRAY_PATH = "output/test_run_4/content_processed/"
-    CONTENT_LATENT_PATH = "output/test_run_4/content_latents/"
+    CONTENT_GRAY_PATH = "output/test_run/content_processed/"
+    CONTENT_LATENT_PATH = "output/test_run/content_latents/"
     STYLE_COLOR_PATH = "data/style/van_gogh/000.jpg"
-    STYLE_GRAY_PATH = "output/test_run_4/style_processed/style.pt"
-    STYLE_LATENT_PATH = "output/test_run_4/style_latents/style.pt"
+    STYLE_GRAY_PATH = "output/test_run/style_processed/style.pt"
+    STYLE_LATENT_PATH = "output/test_run/style_latents/style.pt"
 
-    SAMPLE_CONTENT_ID = 3
+    SAMPLE_CONTENT_ID = 10
 
     OUTPUT_DIR = "output/"
     OUTPUT_PREFIX = "style_transfer__"
@@ -269,27 +276,18 @@ if __name__ == "__main__":
     logger = logging.getLogger("Main")
     logger.info(f"Starting example usage of style transfer...")
 
-    # #load model
-    options = model_and_diffusion_defaults()
-    options.update({
-        'attention_resolutions': '32,16,8',
-        'class_cond': False,
-        'diffusion_steps': T_TRANS,
-        'image_size': IMAGE_SIZE,
-        'learn_sigma': True,
-        'noise_schedule': 'linear',
-        'num_channels': 256,
-        'num_head_channels': 64,
-        'num_res_blocks': 2,
-        'resblock_updown': True,
-        'use_fp16': False,
-        'use_scale_shift_norm': True,
-    })
-
-    model, diffusion = create_model_and_diffusion(**options)
-    state_dict = torch.load(CHECKPOINT_PATH, map_location=DEVICE, weights_only=True)
-    model.load_state_dict(state_dict)
+    #load model
+    model = i_DDPM("IMAGENET", IMAGE_SIZE)
+    init_ckpt = torch.load(CHECKPOINT_PATH, weights_only=True)
+    model.load_state_dict(init_ckpt)
     model.to(DEVICE)
+
+    #get alphas_cumprod
+    alphas_cumprod = get_linear_alphas_cumprod(
+        timesteps=DIFFUSION_NUM_TIMESTEPS,
+        beta_start=DIFFUSION_BETA_START,
+        beta_end=DIFFUSION_BETA_END
+    )
 
     #get sample style color, gray, and latent
     style_color = Image.open(STYLE_COLOR_PATH)
@@ -324,18 +322,18 @@ if __name__ == "__main__":
     logger.info(f"Content latent tensor shape: {content_latent[SAMPLE_CONTENT_ID].shape}")
 
     #test reverse diffusion to reconstruct style
-    ddim_timesteps_backward = np.linspace(0, diffusion.num_timesteps - 1, S_REV, dtype=int)
+    ddim_timesteps_backward = np.linspace(0, T_TRANS, S_REV, dtype=int)
     ddim_timesteps_backward = ddim_timesteps_backward[::-1]
-    style_x0_est = ddim_deterministic(style_latent, model, diffusion, ddim_timesteps_backward, DEVICE, logger=logger)
+    style_x0_est = ddim_deterministic(style_latent, model, alphas_cumprod, ddim_timesteps_backward, DEVICE, logger=logger)
     style_x0_est_image = style_x0_est.squeeze(0).permute(1, 2, 0).cpu().numpy()
     style_x0_est_image = ((style_x0_est_image + 1) / 2).clip(0, 1)  # scale back to [0,1]
     style_x0_est_image = (style_x0_est_image * 255).astype(np.uint8)
     Image.fromarray(style_x0_est_image).save(os.path.join(OUTPUT_DIR, OUTPUT_PREFIX + "style_image_after_reverse_diffusion.jpg"))
 
     #test reverse diffusion to reconstruct sample content
-    ddim_timesteps_backward = np.linspace(0, diffusion.num_timesteps - 1, S_REV, dtype=int)
+    ddim_timesteps_backward = np.linspace(0, T_TRANS, S_REV, dtype=int)
     ddim_timesteps_backward = ddim_timesteps_backward[::-1]
-    content_x0_est = ddim_deterministic(content_latent[SAMPLE_CONTENT_ID], model, diffusion, ddim_timesteps_backward, DEVICE, logger=logger)
+    content_x0_est = ddim_deterministic(content_latent[SAMPLE_CONTENT_ID], model, alphas_cumprod, ddim_timesteps_backward, DEVICE, logger=logger)
     content_x0_est_image = content_x0_est.squeeze(0).permute(1, 2, 0).cpu().numpy()
     content_x0_est_image = ((content_x0_est_image + 1) / 2).clip(0, 1)  # scale back to [0,1]
     content_x0_est_image = (content_x0_est_image * 255).astype(np.uint8)
@@ -352,9 +350,10 @@ if __name__ == "__main__":
         content_gray,
         content_latent,
         model,
-        diffusion,
+        alphas_cumprod,
         clip_model,
         clip_preprocess,
+        T_TRANS,
         S_REV,
         K,
         K_S,
@@ -366,21 +365,27 @@ if __name__ == "__main__":
         DEVICE,
         logger=logger,
     )
-    # torch.save(model_finetuned.state_dict(), os.path.join(OUTPUT_DIR, f"{OUTPUT_PREFIX}finetuned_style_model.pt"))
+    torch.save(model_finetuned.state_dict(), os.path.join(OUTPUT_DIR, f"{OUTPUT_PREFIX}finetuned_style_model.pt"))
+    # model_finetuned = i_DDPM("IMAGENET", IMAGE_SIZE)
+    # finetuned_ckpt = torch.load(os.path.join(OUTPUT_DIR, f"{OUTPUT_PREFIX}finetuned_style_model.pt"), weights_only=True)
+    # model_finetuned.load_state_dict(finetuned_ckpt)
+    # model_finetuned.eval().to(DEVICE)
 
     #test reverse diffusion to reconstruct style with finetuned model
-    ddim_timesteps_backward = np.linspace(0, diffusion.num_timesteps - 1, S_REV, dtype=int)
+    ddim_timesteps_backward = np.linspace(0, T_TRANS, S_REV, dtype=int)
+    # ddim_timesteps_backward = np.linspace(0, T_TRANS, S_FOR, dtype=int)
     ddim_timesteps_backward = ddim_timesteps_backward[::-1]
-    style_x0_est = ddim_deterministic(style_latent, model_finetuned, diffusion, ddim_timesteps_backward, DEVICE, logger=logger)
+    style_x0_est = ddim_deterministic(style_latent, model_finetuned, alphas_cumprod, ddim_timesteps_backward, DEVICE, logger=logger)
     style_x0_est_image = style_x0_est.squeeze(0).permute(1, 2, 0).cpu().numpy()
     style_x0_est_image = ((style_x0_est_image + 1) / 2).clip(0, 1)  # scale back to [0,1]
     style_x0_est_image = (style_x0_est_image * 255).astype(np.uint8)
     Image.fromarray(style_x0_est_image).save(os.path.join(OUTPUT_DIR, OUTPUT_PREFIX + "style_image_after_reverse_diffusion_with_finetuned_model.jpg"))
 
     #test reverse diffusion to reconstruct sample_content with finetuned model
-    ddim_timesteps_backward = np.linspace(0, diffusion.num_timesteps - 1, S_REV, dtype=int)
+    ddim_timesteps_backward = np.linspace(0, T_TRANS, S_REV, dtype=int)
+    # ddim_timesteps_backward = np.linspace(0, T_TRANS, S_FOR, dtype=int)
     ddim_timesteps_backward = ddim_timesteps_backward[::-1]
-    content_x0_est = ddim_deterministic(content_latent[SAMPLE_CONTENT_ID], model_finetuned, diffusion, ddim_timesteps_backward, DEVICE, logger=logger)
+    content_x0_est = ddim_deterministic(content_latent[SAMPLE_CONTENT_ID], model_finetuned, alphas_cumprod, ddim_timesteps_backward, DEVICE, logger=logger)
     content_x0_est_image = content_x0_est.squeeze(0).permute(1, 2, 0).cpu().numpy()
     content_x0_est_image = ((content_x0_est_image + 1) / 2).clip(0, 1)  # scale back to [0,1]
     content_x0_est_image = (content_x0_est_image * 255).astype(np.uint8)

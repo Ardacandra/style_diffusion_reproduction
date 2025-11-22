@@ -24,7 +24,7 @@ pip install git+https://github.com/openai/CLIP.git
 3. Prepare dataset
 
 ```
-python src/prepare_dataset.py --n_content 100 --size 256
+python src/prepare_dataset.py --n_content 50 --size 512
 ```
 
 4. Prepare pre-trained model from [OpenAI Guided Diffusion](https://github.com/openai/guided-diffusion?tab=readme-ov-file)
@@ -40,6 +40,7 @@ pip install -e .
 ```
 cd models/checkpoints
 wget https://openaipublic.blob.core.windows.net/diffusion/jul-2021/256x256_diffusion_uncond.pt
+wget https://openaipublic.blob.core.windows.net/diffusion/jul-2021/512x512_diffusion.pt
 ```
 
 ### How to Run
